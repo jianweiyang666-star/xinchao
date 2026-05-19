@@ -1,0 +1,183 @@
+@import 'tailwindcss';
+
+/* InnerTide · Void Theme (深渊冥想) */
+
+:root {
+  /* Immersive Theme Data - Warm Light Edition */
+  --void-950: #FCF9F6;
+  --void-900: #F4ECE6;
+  --void-800: #EADCD1;
+  --void-700: #DECEC1;
+  --orb-500: #FF85A2; /* warm coral/pink */
+  --orb-400: #FFB3C6;
+  --orb-glow: rgba(255, 133, 162, 0.4);
+  --secondary-orb: #BFA5D4;
+
+  /* Mapped into existing components */
+  --void-bg: var(--void-950);
+  --void-core: var(--void-800);
+  --void-glow: var(--void-700);
+
+  /* 文字光谱 - Dark warm brown/gray for contrast on light bg */
+  --void-text: #4A3E3B;
+  --void-muted: #8C7B77;
+  --void-faint: rgba(140, 123, 119, 0.2);
+
+  /* 四相能量流体 */
+  --orb-menstrual: var(--orb-500);
+  --orb-follicular: var(--orb-400);
+  --orb-ovulation: var(--secondary-orb);
+  --orb-luteal: #8a4dff; /* alternative purple */
+
+  --background: var(--void-bg);
+  --foreground: var(--void-text);
+  
+  --gold-bronze: var(--orb-ovulation);
+  --coffee-deep: #1a1a2e;
+  --coffee-mid: var(--void-muted);
+  --coffee-soft: var(--void-faint);
+  --cream: var(--void-bg);
+  --cream-soft: var(--void-glow);
+  --cream-deep: var(--void-core);
+  --gold-soft: var(--void-faint);
+}
+
+@theme inline {
+  --font-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: 'Georgia', serif;
+
+  --color-void-950: var(--void-950);
+  --color-void-900: var(--void-900);
+  --color-void-800: var(--void-800);
+  --color-void-700: var(--void-700);
+  --color-orb-500: var(--orb-500);
+  --color-orb-400: var(--orb-400);
+  --color-secondary-orb: var(--secondary-orb);
+
+  --color-background: var(--void-bg);
+  --color-foreground: var(--void-text);
+  
+  --color-gold-bronze: var(--orb-ovulation);
+  --color-coffee-deep: var(--void-text);
+  --color-coffee-mid: var(--void-muted);
+  --color-coffee-soft: var(--void-faint);
+  --color-cream: var(--void-bg);
+  --color-cream-soft: var(--void-glow);
+  --color-cream-deep: var(--void-core);
+  --color-gold-soft: var(--void-faint);
+
+  --color-orb-menstrual: var(--orb-menstrual);
+  --color-orb-follicular: var(--orb-follicular);
+  --color-orb-ovulation: var(--orb-ovulation);
+  --color-orb-luteal: var(--orb-luteal);
+  --color-void-bg: var(--void-bg);
+  --color-void-core: var(--void-core);
+  --color-void-glow: var(--void-glow);
+  --color-void-text: var(--void-text);
+  --color-void-muted: var(--void-muted);
+  --color-void-faint: var(--void-faint);
+}
+
+@layer base {
+  body {
+    @apply bg-void-bg text-void-text font-sans;
+    letter-spacing: 0.02em;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  body::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .tracking-void { letter-spacing: 0.22em; }
+  .tracking-void-x { letter-spacing: 0.36em; }
+  .tracking-breathe { letter-spacing: 0.1em; }
+  .tracking-breathe-wide { letter-spacing: 0.22em; }
+  .tracking-breathe-x { letter-spacing: 0.36em; }
+  
+  .glass {
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  }
+
+  .deep-text-glow {
+    text-shadow: 0 0 20px var(--orb-glow);
+  }
+  .deep-glow-warm {
+    box-shadow: 0 0 24px var(--orb-glow);
+  }
+  .deep-glow-gold {
+    box-shadow: 0 0 24px rgba(112, 77, 255, 0.4);
+  }
+}
+
+@keyframes ink-rise {
+  from { opacity: 0; filter: blur(8px); transform: translateY(12px); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+.animate-ink-rise { animation: ink-rise 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes ink-rise-slow {
+  from { opacity: 0; filter: blur(8px); transform: translateY(16px); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+.animate-ink-rise-slow { animation: ink-rise-slow 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes island-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes orb-drift-a {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-5%, 4%) scale(1.05); }
+  66% { transform: translate(4%, -3%) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes orb-drift-b {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(4%, -5%) scale(0.95); }
+  66% { transform: translate(-3%, 4%) scale(1.02); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes orb-drift-c {
+  0% { transform: translate(0, 0) scale(0.95); }
+  33% { transform: translate(3%, 3%) scale(1.05); }
+  66% { transform: translate(-4%, -2%) scale(1); }
+  100% { transform: translate(0, 0) scale(0.95); }
+}
+
+@keyframes animate-star {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes satellite-orbit-star {
+  0%   { transform: rotate(0deg) translateX(42px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(42px) rotate(-360deg); }
+}
+
+@keyframes animate-ripple {
+  0% { transform: scale(0.8); opacity: 1; border-width: 2px; }
+  100% { transform: scale(3.5); opacity: 0; border-width: 0px; }
+}
+
+@keyframes phase-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-phase-fade { animation: phase-fade 0.7s ease-out; }
+
+/* Letter unseal animation */
+@keyframes letter-unseal {
+  0% { transform: translateY(40px); opacity: 0; filter: blur(4px); }
+  100% { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+.animate-letter-unseal { animation: letter-unseal 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
