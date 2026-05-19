@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 
-dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env.local', override: true });
 
 const app = express();
 const port = process.env.PORT || 3001;
