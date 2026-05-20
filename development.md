@@ -630,6 +630,16 @@ LLM_API_MODE="chat"
 | **边界测试 (手动)** | 故意输入空消息、极端关键词、极长文本、关闭后端服务后再发送，验证所有兜底逻辑 |
 | **未来 (可选)** | 如果项目规模扩大，可引入 Vitest 对 `computeCycleState` 和 `detectCrisis` 做自动化单元测试 |
 
+### 10.5 预览入口文件
+
+项目根目录新增 `preview.html`，用于本地文件夹内快速点击预览。
+
+- 双击 `preview.html` 可打开一个轻量入口页。
+- 入口页包含云端网站 `http://47.118.80.247:3002/`。
+- 入口页同时保留本地 `localhost:3002` 和 `localhost:3000` 入口。
+- 该文件不参与 React 构建，不影响线上页面逻辑，仅作为开发和演示时的快捷入口。
+- 若云端入口打不开，优先检查 `pm2 status` 中 `xinchao-web` 是否 `online`，以及 `curl -I http://localhost:3002` 是否返回 200。
+
 ---
 
 ## 11. 按证据验收 (Evidence-Based Acceptance)
