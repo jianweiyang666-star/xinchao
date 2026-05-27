@@ -164,10 +164,10 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-label="与潮对话"
     >
-      {/* 顶栏 + 三颗星轨光点 人格切换 */}
+      {/* 顶栏 + 明确的人格切换 */}
       <header className="flex flex-col px-5 pt-12 pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-6 px-2">
+        <div className="flex items-start justify-between gap-4">
+          <div className="grid flex-1 grid-cols-3 gap-2 rounded-[22px] bg-white/18 p-1.5 backdrop-blur-md">
             {PERSONAS.map((p) => {
               const active = p === persona;
               return (
@@ -175,27 +175,18 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
                   key={p}
                   type="button"
                   onClick={() => update({ persona: p })}
-                  className="group relative flex flex-col items-center gap-1.5"
+                  className={`rounded-2xl px-2 py-2.5 text-left transition active:scale-[0.98] ${
+                    active
+                      ? "bg-void-text text-white shadow-sm"
+                      : "text-void-text/68 hover:bg-white/22"
+                  }`}
                   aria-pressed={active}
                 >
-                  <div className="relative h-3 w-3 flex items-center justify-center">
-                    {/* Orbiting star point when active */}
-                    {active && (
-                      <div className="absolute inset-0 rounded-full animate-spin" style={{ animationDuration: '4s' }}>
-                        <div className="absolute top-0 left-0 w-1 h-1 rounded-full bg-orb-ovulation shadow-[0_0_8px_var(--orb-ovulation)]" />
-                      </div>
-                    )}
-                    {/* Core dot */}
-                    <span
-                      className={`block rounded-full transition-all duration-300 ${
-                        active ? "h-1.5 w-1.5 bg-void-text deep-glow-gold" : "h-1 w-1 bg-void-muted group-hover:bg-void-text"
-                      }`}
-                    />
-                  </div>
-                  <span className={`text-[9px] uppercase tracking-[0.2em] font-bold transition-colors ${
-                    active ? "text-void-text" : "text-void-text opacity-50 group-hover:opacity-100"
+                  <span className="block text-[13px] font-semibold leading-none">{PERSONA_LABELS[p]}</span>
+                  <span className={`mt-1.5 block text-[10px] leading-snug ${
+                    active ? "text-white/72" : "text-void-text/48"
                   }`}>
-                    {PERSONA_LABELS[p]}
+                    {PERSONA_SUBTITLES[p]}
                   </span>
                 </button>
               );
@@ -204,15 +195,11 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-void-text opacity-50 transition hover:opacity-100"
+            className="shrink-0 rounded-full p-1.5 text-void-text opacity-50 transition hover:opacity-100"
             aria-label="关闭"
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
-        {/* Subtitle describing the current persona */}
-        <div className="mt-4 px-2 text-xs text-void-text/70 font-serif">
-          {PERSONA_LABELS[persona]}：{PERSONA_SUBTITLES[persona]}
         </div>
       </header>
 
@@ -277,10 +264,13 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
           
           {loading && (
             <div className="flex justify-start animate-ink-rise">
-              <div className="flex gap-1.5 rounded-2xl px-5 py-4">
-                <span className="h-1.5 w-1.5 rounded-full bg-void-text/50 animate-breathe" />
-                <span className="h-1.5 w-1.5 rounded-full bg-void-text/50 animate-breathe" style={{ animationDelay: "0.3s" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-void-text/50 animate-breathe" style={{ animationDelay: "0.6s" }} />
+              <div className="max-w-[85%] rounded-2xl bg-white/18 px-5 py-3 text-void-text/70 backdrop-blur-sm">
+                <div className="mb-2 text-[12px] font-serif">我在慢慢听你说</div>
+                <div className="flex gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-void-text/50 animate-breathe" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-void-text/50 animate-breathe" style={{ animationDelay: "0.3s" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-void-text/50 animate-breathe" style={{ animationDelay: "0.6s" }} />
+                </div>
               </div>
             </div>
           )}

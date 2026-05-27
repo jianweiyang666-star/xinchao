@@ -10,9 +10,14 @@ interface DailyTipsProps {
   recommendation: DailyRecommendation;
   dietPrefs: DietPrefs;
   exercisePrefs: ExercisePrefs;
+  resonance?: {
+    diet: string;
+    exercise: string;
+    work: string;
+  };
 }
 
-export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTipsProps) {
+export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance }: DailyTipsProps) {
   const [openCard, setOpenCard] = useState<"diet" | "exercise" | "work" | null>(null);
 
   const toggleCard = (card: "diet" | "exercise" | "work") => {
@@ -31,11 +36,11 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
   const dietInfo = recommendation.diet;
 
   return (
-    <div className="mt-8 flex flex-col gap-3 w-full max-w-sm mx-auto">
-      <h3 className="text-xs font-bold uppercase tracking-[0.2em] opacity-40 text-center mb-2">今日宜做</h3>
+    <div className="flex w-full flex-col gap-3">
+      <h3 className="text-[16px] font-semibold text-[#221A18]">今日建议</h3>
 
       {/* Diet Card */}
-      <div className="bg-white/40 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 border border-white/50">
+      <div className="overflow-hidden rounded-2xl border border-white/50 bg-[#FFF9F4]/80 transition-all duration-300 backdrop-blur-md">
         <button
           onClick={() => toggleCard("diet")}
           className="w-full flex items-center justify-between p-4 focus:outline-none"
@@ -45,12 +50,15 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
               <Coffee className="w-4 h-4" />
             </div>
             <div className="text-left">
-               <span className="font-medium text-[14px]">今日饮食建议</span>
+               <span className="font-semibold text-[15px]">今日饮食建议</span>
                {(hasDietAvoid || hasHealthGoal) && (
-                 <span className="block text-[10px] opacity-40">已根据偏好调整</span>
+                 <span className="block text-[11px] text-[#8C7B77]">已根据偏好调整</span>
                )}
                {!hasDietAvoid && !hasHealthGoal && (
-                 <span className="block text-[10px] opacity-40">{recommendation.headline}</span>
+                 <span className="block text-[11px] text-[#8C7B77]">{recommendation.headline}</span>
+               )}
+               {resonance?.diet && (
+                 <span className="mt-1 block text-[11px] leading-relaxed text-[#B0776C]">{resonance.diet}</span>
                )}
             </div>
           </div>
@@ -70,9 +78,9 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
             <MealCard label="午餐" meal={adjustMeal(dietInfo.lunch, dietPrefs)} />
             <MealCard label="晚餐" meal={adjustMeal(dietInfo.dinner, dietPrefs)} />
 
-            {dietPrefs.avoid.includes("忌生冷") && (
+            {(dietPrefs.avoid.includes("忌生冷") || dietPrefs.avoid.includes("冷饮/生冷敏感")) && (
               <div className="mt-2 p-2 bg-[#FFE0E0]/30 rounded-lg text-[11px] text-[#FF5A5A] border border-[#FF5A5A]/10">
-                提醒：系统已检测到您“忌生冷”，上述建议请温热食用。
+                提醒：系统已检测到“冷饮/生冷敏感”，上述建议请温热食用。
               </div>
             )}
 
@@ -84,7 +92,7 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
       </div>
 
       {/* Exercise Card */}
-      <div className="bg-white/40 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 border border-white/50">
+      <div className="overflow-hidden rounded-2xl border border-white/50 bg-[#FFF9F4]/80 transition-all duration-300 backdrop-blur-md">
         <button
           onClick={() => toggleCard("exercise")}
           className="w-full flex items-center justify-between p-4 focus:outline-none"
@@ -94,11 +102,14 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
               <Activity className="w-4 h-4" />
             </div>
             <div className="text-left">
-              <span className="font-medium text-[14px]">今日运动建议</span>
+              <span className="font-semibold text-[15px]">今日运动建议</span>
               {exerciseGoals.length > 0 ? (
-                <span className="block text-[10px] opacity-40">已锁定目标：{exerciseGoals[0]}</span>
+                <span className="block text-[11px] text-[#8C7B77]">已锁定目标：{exerciseGoals[0]}</span>
               ) : (
-                <span className="block text-[10px] opacity-40">{recommendation.exercise.intensity} · {recommendation.exercise.title}</span>
+                <span className="block text-[11px] text-[#8C7B77]">{recommendation.exercise.intensity} · {recommendation.exercise.title}</span>
+              )}
+              {resonance?.exercise && (
+                <span className="mt-1 block text-[11px] leading-relaxed text-[#B0776C]">{resonance.exercise}</span>
               )}
             </div>
           </div>
@@ -116,11 +127,15 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
           <div className="mt-2 text-sm text-[#4A3E3B]/80 bg-white/30 rounded-xl p-4 leading-relaxed flex flex-col gap-3">
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">推荐项目</span>
-              {exerciseGoals.includes("缓解痛经") ? "猫式伸展或婴儿式（瑜伽），时长 15 分钟。" : recommendation.exercise.recommendation}
+              {exerciseGoals.includes("只能很轻") || exerciseGoals.includes("完全不想动")
+                ? "猫牛式或婴儿式瑜伽，5-10 分钟就够；不舒服时可以只休息。"
+                : recommendation.exercise.recommendation}
             </div>
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">注意事项</span>
-              {healthIssues.includes("膝盖受损") ? "系统检测到膝盖不适，请避免深蹲及高冲击性动作。" : recommendation.exercise.caution}
+              {healthIssues.includes("膝关节稳定")
+                ? "今天先避开深蹲、跳跃和高冲击动作，优先散步或轻柔拉伸。"
+                : recommendation.exercise.caution}
             </div>
             <div className="text-[10px] opacity-50 text-right mt-1">
               参考资料：《ACOG 女性运动指南》
@@ -130,7 +145,7 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
       </div>
 
       {/* Work Card */}
-      <div className="glass rounded-2xl overflow-hidden transition-all duration-300">
+      <div className="overflow-hidden rounded-2xl border border-white/50 bg-[#FFF9F4]/80 transition-all duration-300 backdrop-blur-md">
         <button
           onClick={() => toggleCard("work")}
           className="w-full flex items-center justify-between p-4 focus:outline-none"
@@ -139,7 +154,12 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs }: DailyTip
             <div className="p-2 rounded-full bg-[#FFE5A3]/30 text-[#D4A373]">
               <Briefcase className="w-4 h-4" />
             </div>
-            <span className="font-medium text-[14px]">今日工作建议</span>
+            <div className="text-left">
+              <span className="font-semibold text-[15px]">今日工作建议</span>
+              {resonance?.work && (
+                <span className="mt-1 block text-[11px] leading-relaxed text-[#B0776C]">{resonance.work}</span>
+              )}
+            </div>
           </div>
           <ChevronDown
             className={`w-4 h-4 text-void-text/40 transition-transform duration-300 ${
@@ -189,9 +209,9 @@ function MealCard({ label, meal }: { label: string; meal: Meal }) {
 function adjustMeal(meal: Meal, dietPrefs: DietPrefs): Meal {
   let next = { ...meal };
   const avoidRedMeat = dietPrefs.avoid.includes("忌红肉");
-  const avoidSeafood = dietPrefs.avoid.includes("忌海鲜水产") || dietPrefs.allergies.includes("海鲜");
-  const avoidMilk = dietPrefs.allergies.includes("牛奶");
-  const controlSugar = dietPrefs.healthGoals.includes("控糖");
+  const avoidSeafood = dietPrefs.avoid.includes("忌海鲜水产") || dietPrefs.allergies.includes("海鲜") || dietPrefs.allergies.includes("海鲜过敏");
+  const avoidMilk = dietPrefs.allergies.includes("牛奶") || dietPrefs.allergies.includes("乳糖不耐");
+  const controlSugar = dietPrefs.healthGoals.includes("控糖") || dietPrefs.avoid.includes("高糖高油敏感");
 
   if (avoidRedMeat && /牛肉|排骨|瘦肉/.test(next.name)) {
     next = {
@@ -213,7 +233,7 @@ function adjustMeal(meal: Meal, dietPrefs: DietPrefs): Meal {
     next = {
       ...next,
       name: next.name.replace(/牛奶|无糖酸奶|酸奶/g, "无糖豆浆"),
-      notes: `${next.notes}；已按牛奶过敏偏好替换`
+      notes: `${next.notes}；已按乳糖不耐/牛奶过敏偏好替换`
     };
   }
 

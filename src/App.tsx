@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react';
 import TodayPage from './app/(app)/today/page';
 import JournalPage from './app/(app)/journal/page';
 import AboutPage from './app/(app)/about/page';
+import { OnboardingQuestionnaire } from './components/innertide/onboarding-questionnaire';
+import { useInnertideStore } from './lib/store';
 
 export default function App() {
   const [route, setRoute] = useState('/today');
+  const { store, loaded } = useInnertideStore();
 
   // Extremely basic router for Vite preview
   useEffect(() => {
@@ -17,6 +20,7 @@ export default function App() {
   }, []);
 
   const isToday = route === '/today';
+  const shouldShowOnboarding = loaded && !store.onboardingCompleted && route !== '/about';
 
   return (
     <div className="relative min-h-screen bg-void-bg text-void-text antialiased">
@@ -51,11 +55,12 @@ export default function App() {
           } : {}
         }
       >
-        {route === '/today' && <TodayPage />}
-        {route === '/journal' && <JournalPage />}
-        {route === '/about' && <AboutPage />}
+        {!loaded && null}
+        {shouldShowOnboarding && <OnboardingQuestionnaire />}
+        {!shouldShowOnboarding && route === '/today' && <TodayPage />}
+        {!shouldShowOnboarding && route === '/journal' && <JournalPage />}
+        {!shouldShowOnboarding && route === '/about' && <AboutPage />}
       </div>
     </div>
   );
 }
-

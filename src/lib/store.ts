@@ -6,9 +6,16 @@ export interface JournalEntry {
     level: number; // 0-5
     locations: string[];
   };
+  statusTags?: Partial<Record<StatusTagCategory, string[]>>;
+  periodStarted?: boolean;
+  sexualActivity?: {
+    recordedAt: string;
+  };
   note?: string;
   mode?: 'healing' | 'resonance';
 }
+
+export type StatusTagCategory = 'mood' | 'symptom' | 'diet' | 'exercise' | 'sexual';
 
 export interface LetterRecord {
   createdAt: string;
@@ -36,10 +43,38 @@ export interface ExercisePrefs {
   avoiding: string[];
 }
 
+export interface PeriodReminderPrefs {
+  enabled: boolean;
+  daysBefore: number;
+  browserNotification: boolean;
+  lastNotifiedPeriodKey: string | null;
+}
+
+export interface OnboardingAnswers {
+  concerns: string[];
+  painLevel: string;
+  suspectedTriggers: string[];
+  observationGoal: string;
+  customObservationGoal?: string;
+  cycleRegularity?: string;
+  periodDuration?: string;
+  painTiming?: string;
+}
+
+export interface ObservationGoal {
+  title: string;
+  createdAt: string;
+  source: "onboarding";
+}
+
 interface State {
   nickname: string | null;
   lastPeriodStart: string | null;
   cycleLength: number;
+  onboardingCompleted: boolean;
+  onboardingAnswers: OnboardingAnswers | null;
+  observationGoal: ObservationGoal | null;
+  periodReminder: PeriodReminderPrefs;
   ttsEnabled: boolean;
   appMode: 'healing' | 'resonance';
   journal: Record<string, JournalEntry>;
@@ -53,6 +88,15 @@ let globalStore: State = {
   nickname: null,
   lastPeriodStart: new Date().toISOString(),
   cycleLength: 28,
+  onboardingCompleted: false,
+  onboardingAnswers: null,
+  observationGoal: null,
+  periodReminder: {
+    enabled: false,
+    daysBefore: 3,
+    browserNotification: false,
+    lastNotifiedPeriodKey: null,
+  },
   ttsEnabled: false,
   appMode: 'healing',
   journal: {},
@@ -63,7 +107,7 @@ let globalStore: State = {
     religion: [],
     dietMode: "无限制",
     healthGoals: [],
-    spicy: "微辣",
+    spicy: "不辣",
     oil: "正常",
     avoid: [],
   },
@@ -105,6 +149,14 @@ export function useInnertideStore() {
         } else {
           parsed.exercisePreferences = { ...globalStore.exercisePreferences, ...parsed.exercisePreferences };
         }
+
+        parsed.periodReminder = {
+          ...globalStore.periodReminder,
+          ...(parsed.periodReminder || {})
+        };
+        parsed.onboardingCompleted = Boolean(parsed.onboardingCompleted);
+        parsed.onboardingAnswers = parsed.onboardingAnswers || null;
+        parsed.observationGoal = parsed.observationGoal || null;
         globalStore = { ...globalStore, ...parsed };
         setStore(globalStore);
       }

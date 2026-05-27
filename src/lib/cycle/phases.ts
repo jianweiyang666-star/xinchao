@@ -23,3 +23,48 @@ export function computeCycleState(lastStart: Date | null, cycleLength = 28, peri
   
   return { phase, cycleDay, periodLength, cycleLength };
 }
+
+function atLocalStartOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export function getPeriodPrediction(
+  lastStart: Date | null,
+  cycleLength = 28,
+  reminderDaysBefore = 3,
+  cursorDate = new Date()
+) {
+  if (!lastStart) {
+    return null;
+  }
+
+  const today = atLocalStartOfDay(cursorDate);
+  const start = atLocalStartOfDay(lastStart);
+  const diffDays = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const cyclesElapsed = Math.max(0, Math.floor(diffDays / cycleLength) + 1);
+  const nextPeriodStart = addDays(start, cyclesElapsed * cycleLength);
+  const reminderDate = addDays(nextPeriodStart, -reminderDaysBefore);
+  const daysUntilPeriod = Math.ceil((nextPeriodStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const daysUntilReminder = Math.ceil((reminderDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const isReminderWindow = daysUntilPeriod >= 0 && daysUntilPeriod <= reminderDaysBefore;
+
+  return {
+    nextPeriodStart,
+    reminderDate,
+    nextPeriodStartKey: formatDate(nextPeriodStart),
+    reminderDateKey: formatDate(reminderDate),
+    daysUntilPeriod,
+    daysUntilReminder,
+    isReminderWindow,
+  };
+}
