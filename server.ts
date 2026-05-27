@@ -1,5 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 import { retrieveKnowledgeContext } from './src/lib/knowledge/retrieve';
 import { buildCycleReport, compactReportForPrompt, type CycleReport, type CycleReportInput } from './src/lib/reports/cycle-report';
@@ -8,6 +10,8 @@ dotenv.config({ path: '.env.local', override: true });
 
 const app = express();
 const port = process.env.PORT || 3001;
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.join(rootDir, 'dist');
 
 app.use(express.json());
 
@@ -18,6 +22,13 @@ const llmModel = process.env.LLM_MODEL || process.env.ALIBABA_MODEL || process.e
 const llmApiMode = process.env.LLM_API_MODE || process.env.ALIBABA_API_MODE || process.env.AIHUBMIX_API_MODE || (llmModel.includes('gpt-5.5') ? 'responses' : 'chat');
 const llmReasoningEffort = process.env.LLM_REASONING_EFFORT || process.env.AIHUBMIX_REASONING_EFFORT || 'medium';
 const llmVerbosity = process.env.LLM_VERBOSITY || process.env.AIHUBMIX_VERBOSITY || 'low';
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    aiConfigured: Boolean(llmApiKey || process.env.GEMINI_API_KEY),
+  });
+});
 
 let gemini: GoogleGenAI | null = null;
 if (!llmApiKey && process.env.GEMINI_API_KEY) {
@@ -441,6 +452,13 @@ app.post('/api/cycle-report', async (req, res) => {
     res.status(500).json({ error: 'Failed to build cycle report', details: error.message });
   }
 });
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(distDir));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
 
 app.listen(port, () => {
   const provider = llmApiKey ? `${llmProviderName} (${llmModel}, ${llmApiMode})` : gemini ? 'Gemini (gemini-2.5-flash)' : 'none';
