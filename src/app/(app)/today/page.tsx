@@ -11,6 +11,7 @@ import { useInnertideStore, type JournalEntry, type StatusTagCategory } from "@/
 import { computeCycleState, getPeriodPrediction, PHASE_LABELS, type CyclePhase } from "@/lib/cycle/phases";
 import { getDailyRecommendation } from "@/data/daily-recommendations";
 import { STATUS_TAG_GROUPS } from "@/data/knowledge-tags";
+import { buildCycleReport, type CycleReport } from "@/lib/reports/cycle-report";
 
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -48,6 +49,16 @@ function formatMonthTitle(date: Date) {
 
 function getWeekday(date: Date) {
   return ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+}
+
+function sanitizeJournalForCycleReport(journal: Record<string, JournalEntry>) {
+  return Object.fromEntries(
+    Object.entries(journal).map(([date, entry]) => {
+      const { sexualActivity: _sexualActivity, statusTags, ...safeEntry } = entry;
+      const { sexual: _sexual, ...safeStatusTags } = statusTags ?? {};
+      return [date, { ...safeEntry, statusTags: safeStatusTags }];
+    })
+  ) as Record<string, JournalEntry>;
 }
 
 const STATUS_GROUPS = STATUS_TAG_GROUPS;
@@ -102,6 +113,9 @@ export default function TodayPage() {
   const [calendarMode, setCalendarMode] = useState<"preview" | "period">("preview");
   const [statusPanelOpen, setStatusPanelOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
+  const [cycleReport, setCycleReport] = useState<CycleReport | null>(null);
+  const [cycleReportLoading, setCycleReportLoading] = useState(false);
+  const [cycleReportError, setCycleReportError] = useState("");
   const [activeStatusGroup, setActiveStatusGroup] = useState<StatusTagCategory>("mood");
   const [calendarDraftKey, setCalendarDraftKey] = useState(() => formatDateKey(startOfDay(new Date())));
   const [calendarMonthKey, setCalendarMonthKey] = useState(() => formatDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
@@ -152,13 +166,21 @@ export default function TodayPage() {
     const tagCount = tagGroups.reduce((sum, tags) => sum + tags.length, 0);
     return tagCount > 0 || Boolean(entry.pain) || Boolean(entry.periodStarted);
   });
+  const reportPayload = useMemo(() => ({
+    todayKey: todayKeyValue,
+    lastPeriodStart: store.lastPeriodStart,
+    cycleLength: store.cycleLength,
+    journal: sanitizeJournalForCycleReport(store.journal),
+    observationGoal: store.observationGoal,
+    onboardingAnswers: store.onboardingAnswers,
+  }), [todayKeyValue, store.lastPeriodStart, store.cycleLength, store.journal, store.observationGoal, store.onboardingAnswers]);
+  const localCycleReport = useMemo(() => buildCycleReport(reportPayload), [reportPayload]);
   const painEntries = journalEntries.filter(([, entry]) => entry.pain);
-  const maxPain = painEntries.reduce((max, [, entry]) => Math.max(max, entry.pain?.level ?? 0), 0);
   const strongestPainEntry = painEntries.reduce<[string, JournalEntry] | null>((strongest, current) => {
     if (!strongest) return current;
     return (current[1].pain?.level ?? 0) > (strongest[1].pain?.level ?? 0) ? current : strongest;
   }, null);
-  const hasInsightReport = reportableEntries.length >= 3 || Boolean(strongestPainEntry) || Boolean(store.onboardingAnswers) || (activePhase === "menstrual" && cycle.cycleDay >= 5);
+  const hasInsightReport = localCycleReport.hasEnoughData || reportableEntries.length >= 3 || Boolean(strongestPainEntry) || Boolean(store.onboardingAnswers) || (activePhase === "menstrual" && cycle.cycleDay >= 5);
 
   const getPeriodCalendarState = (date: Date): "actual" | "predicted" | "buffer" | null => {
     const cursor = startOfDay(date);
@@ -499,51 +521,35 @@ export default function TodayPage() {
     }
   };
 
+  const openInsightReport = async () => {
+    setInsightOpen(true);
+    setCycleReport(localCycleReport);
+    setCycleReportError("");
+
+    if (!localCycleReport.hasEnoughData) return;
+
+    setCycleReportLoading(true);
+    try {
+      const res = await fetch("/api/cycle-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reportPayload),
+      });
+      if (!res.ok) throw new Error("Failed to generate cycle report");
+      const data = await res.json();
+      setCycleReport(data);
+    } catch (error) {
+      console.error(error);
+      setCycleReport(localCycleReport);
+      setCycleReportError("已使用本地统计生成");
+    } finally {
+      setCycleReportLoading(false);
+    }
+  };
+
   const observationTargetGroup = getObservationTargetGroup();
   const observationTargetLabel = STATUS_GROUPS.find((group) => group.key === observationTargetGroup)?.label ?? "状态";
-  const hasDietRecord = reportableEntries.some(([, entry]) => (entry.statusTags?.diet?.length ?? 0) > 0);
-  const hasExerciseRecord = reportableEntries.some(([, entry]) => (entry.statusTags?.exercise?.length ?? 0) > 0);
-  const hasMoodRecord = reportableEntries.some(([, entry]) => (entry.statusTags?.mood?.length ?? 0) > 0);
-  const hasSymptomRecord = reportableEntries.some(([, entry]) => (entry.statusTags?.symptom?.length ?? 0) > 0 || entry.pain);
-  const strongestPainText = strongestPainEntry
-    ? `${strongestPainEntry[1].pain?.level ?? 0} 分`
-    : "7 分";
-  const hardestMomentText = strongestPainEntry
-    ? `${formatMonthDay(dateFromKey(strongestPainEntry[0]))}`
-    : store.onboardingAnswers?.painTiming ?? "月经第 1 天上午";
-  const painRecordCountText = painEntries.length > 0 ? `${painEntries.length} 次` : "4 次";
-  const maxPainText = maxPain > 0 ? `${maxPain} 分` : "7 分";
-  const insightMetrics = [
-    {
-      label: "疼痛记录",
-      current: `${painRecordCountText} · 最高 ${maxPainText}`,
-      compare: "比上周期低 1 分",
-      note: "集中在经前 2 天到月经第 2 天",
-    },
-    {
-      label: "运动记录",
-      current: "2 次 · 轻中强度",
-      compare: "比上周期多 1 次",
-      note: "散步和拉伸后，不适感记录更少",
-    },
-    {
-      label: "情绪波动",
-      current: "3 次",
-      compare: "略多",
-      note: "主要出现在月经前 3 天",
-    },
-    {
-      label: "疲惫记录",
-      current: "3 次",
-      compare: "接近上周期",
-      note: "熬夜后的第二天更明显",
-    },
-  ];
-  const insightClues = [
-    hasDietRecord ? "饮食记录已经出现了，后面可以继续看冰饮、辛辣和腹胀痛感是不是一起变化。" : "经前 3 天记录了 2 次冰饮，其中 1 次后出现腹胀。",
-    hasExerciseRecord ? "运动记录开始累积了，可以继续观察轻运动后身体会不会更舒服。" : "经前一周运动 2 次，本次最高痛感比上周期低 1 分。",
-    hasMoodRecord || hasSymptomRecord ? "情绪和症状记录放在一起看，会更容易分辨压力和身体不适的先后关系。" : "熬夜后的第二天，疲惫和烦躁记录更明显。",
-  ].filter(Boolean).slice(0, 3);
+  const displayedCycleReport = cycleReport ?? localCycleReport;
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-[#FAF6F2] text-[#221A18]">
@@ -691,7 +697,7 @@ export default function TodayPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setInsightOpen(true)}
+                  onClick={openInsightReport}
                   className="rounded-[18px] bg-[#221A18] px-3 py-3 text-left text-white shadow-sm transition active:scale-[0.98]"
                 >
                   <span className="block text-[13px] font-medium">查看洞察报告</span>
@@ -707,6 +713,9 @@ export default function TodayPage() {
             recommendation={recommendation}
             dietPrefs={store.dietPreferences}
             exercisePrefs={store.exercisePreferences}
+            journalEntry={previewEntry}
+            observationGoal={store.observationGoal}
+            onboardingAnswers={store.onboardingAnswers}
             resonance={resonance.daily}
           />
         </ChaoFab>
@@ -861,24 +870,29 @@ export default function TodayPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[16px] font-medium leading-relaxed text-[#221A18]">
-                        你离了解自己更近了一点
+                        {displayedCycleReport.summary}
                       </div>
                       <p className="mt-1 text-[12px] leading-relaxed text-[#8C7B77]">
-                        根据过去两周的记录生成，当前是月经第 {cycle.cycleDay} 天。
+                        {displayedCycleReport.rangeLabel}，当前是月经第 {cycle.cycleDay} 天。
                       </p>
                     </div>
                     <span className="shrink-0 rounded-full bg-[#F8EFE8] px-3 py-1 text-[11px] text-[#8C7B77]">
-                      示例报告
+                      {cycleReportLoading ? "生成中" : displayedCycleReport.source === "ai" ? "AI 润色" : "本地统计"}
                     </span>
                   </div>
+                  {cycleReportError && (
+                    <div className="mt-3 rounded-2xl bg-[#FFF9F4] px-3 py-2 text-[11px] leading-relaxed text-[#8C7B77]">
+                      {cycleReportError}
+                    </div>
+                  )}
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <div className="rounded-2xl bg-[#FFF9F4] p-3">
-                      <div className="text-[11px] text-[#8C7B77]">本周期最高痛感</div>
-                      <div className="mt-1 text-[18px] font-semibold text-[#221A18]">{strongestPainText}</div>
+                      <div className="text-[11px] text-[#8C7B77]">{displayedCycleReport.highestPain.label}</div>
+                      <div className="mt-1 text-[18px] font-semibold text-[#221A18]">{displayedCycleReport.highestPain.value}</div>
                     </div>
                     <div className="rounded-2xl bg-[#FFF9F4] p-3">
-                      <div className="text-[11px] text-[#8C7B77]">最难受时间</div>
-                      <div className="mt-1 text-[18px] font-semibold text-[#221A18]">{hardestMomentText}</div>
+                      <div className="text-[11px] text-[#8C7B77]">{displayedCycleReport.hardestMoment.label}</div>
+                      <div className="mt-1 text-[18px] font-semibold text-[#221A18]">{displayedCycleReport.hardestMoment.value}</div>
                     </div>
                   </div>
                 </div>
@@ -886,7 +900,7 @@ export default function TodayPage() {
                 <div className="rounded-[24px] bg-white/70 p-4">
                   <div className="text-[14px] font-medium text-[#221A18]">关键要素</div>
                   <div className="mt-3 overflow-hidden rounded-[18px] border border-[#F1E6DF]">
-                    {insightMetrics.map((metric, index) => (
+                    {displayedCycleReport.metrics.map((metric, index) => (
                       <div
                         key={metric.label}
                         className={`grid grid-cols-[0.9fr_1.25fr_1fr] gap-2 px-3 py-3 text-left ${
@@ -907,7 +921,7 @@ export default function TodayPage() {
                 <div className="rounded-[24px] bg-white/70 p-4">
                   <div className="text-[14px] font-medium text-[#221A18]">这一周期可能的规律</div>
                   <div className="mt-3 space-y-2">
-                    {insightClues.map((line) => (
+                    {displayedCycleReport.clues.map((line) => (
                       <div key={line} className="flex gap-2 text-[13px] leading-relaxed text-[#6E625F]">
                         <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#D4A373]" />
                         <span>{line}</span>
@@ -919,10 +933,10 @@ export default function TodayPage() {
                 <div className="rounded-[24px] bg-white/70 p-4">
                   <div className="text-[14px] font-medium text-[#221A18]">下个周期小实验</div>
                   <p className="mt-2 text-[13px] leading-relaxed text-[#6E625F]">
-                    先不用改变所有习惯。下个周期可以试着在经前 3 天减少冰饮，并保持 2 次轻运动，看看痛感和腹胀有没有变化。
+                    {displayedCycleReport.nextExperiment}
                   </p>
                   <p className="mt-3 rounded-2xl bg-[#FFF9F4] px-3 py-2 text-[11px] leading-relaxed text-[#8C7B77]">
-                    目前记录还不多，这些只是帮助你观察自己的线索，不代表确定因果，建议继续记录 1-2 个周期。
+                    {displayedCycleReport.disclaimer}
                   </p>
                 </div>
               </div>

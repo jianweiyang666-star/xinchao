@@ -3,13 +3,17 @@
 import { useState } from "react";
 import { Coffee, Activity, Briefcase, ChevronDown } from "lucide-react";
 import { type DailyRecommendation } from "@/data/daily-recommendations";
-import { type DietPrefs, type ExercisePrefs } from "@/lib/store";
+import { type DietPrefs, type ExercisePrefs, type JournalEntry, type ObservationGoal, type OnboardingAnswers } from "@/lib/store";
 import { type Meal } from "@/data/diet";
+import { buildPersonalizedDailyTips } from "@/lib/daily/personalized-tips";
 
 interface DailyTipsProps {
   recommendation: DailyRecommendation;
   dietPrefs: DietPrefs;
   exercisePrefs: ExercisePrefs;
+  journalEntry?: JournalEntry;
+  observationGoal?: ObservationGoal | null;
+  onboardingAnswers?: OnboardingAnswers | null;
   resonance?: {
     diet: string;
     exercise: string;
@@ -17,7 +21,7 @@ interface DailyTipsProps {
   };
 }
 
-export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance }: DailyTipsProps) {
+export function DailyTips({ recommendation, dietPrefs, exercisePrefs, journalEntry, observationGoal, onboardingAnswers, resonance }: DailyTipsProps) {
   const [openCard, setOpenCard] = useState<"diet" | "exercise" | "work" | null>(null);
 
   const toggleCard = (card: "diet" | "exercise" | "work") => {
@@ -28,12 +32,15 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
     }
   };
 
-  // Logic to filter/adjust text based on preferences
-  const hasDietAvoid = dietPrefs.avoid.length > 0;
-  const hasHealthGoal = dietPrefs.healthGoals.length > 0;
-  const exerciseGoals = exercisePrefs.goals;
-  const healthIssues = exercisePrefs.avoiding;
-  const dietInfo = recommendation.diet;
+  const tips = buildPersonalizedDailyTips({
+    recommendation,
+    dietPrefs,
+    exercisePrefs,
+    journalEntry,
+    observationGoalTitle: observationGoal?.title,
+    onboardingAnswers,
+  });
+  const hasDietAdjustments = tips.diet.badges.length > 0 || tips.diet.reminders.length > 0;
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -51,10 +58,10 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
             </div>
             <div className="text-left">
                <span className="font-semibold text-[15px]">今日饮食建议</span>
-               {(hasDietAvoid || hasHealthGoal) && (
-                 <span className="block text-[11px] text-[#8C7B77]">已根据偏好调整</span>
+               {hasDietAdjustments && (
+                 <span className="block text-[11px] text-[#8C7B77]">{tips.diet.headline}</span>
                )}
-               {!hasDietAvoid && !hasHealthGoal && (
+               {!hasDietAdjustments && (
                  <span className="block text-[11px] text-[#8C7B77]">{recommendation.headline}</span>
                )}
                {resonance?.diet && (
@@ -74,15 +81,16 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
           }`}
         >
           <div className="mt-2 text-sm text-[#4A3E3B]/80 flex flex-col gap-3">
-            <MealCard label="早餐" meal={adjustMeal(dietInfo.breakfast, dietPrefs)} />
-            <MealCard label="午餐" meal={adjustMeal(dietInfo.lunch, dietPrefs)} />
-            <MealCard label="晚餐" meal={adjustMeal(dietInfo.dinner, dietPrefs)} />
+            {tips.diet.badges.length > 0 && <BadgeRow badges={tips.diet.badges} />}
+            <MealCard label="早餐" meal={tips.diet.breakfast} />
+            <MealCard label="午餐" meal={tips.diet.lunch} />
+            <MealCard label="晚餐" meal={tips.diet.dinner} />
 
-            {(dietPrefs.avoid.includes("忌生冷") || dietPrefs.avoid.includes("冷饮/生冷敏感")) && (
-              <div className="mt-2 p-2 bg-[#FFE0E0]/30 rounded-lg text-[11px] text-[#FF5A5A] border border-[#FF5A5A]/10">
-                提醒：系统已检测到“冷饮/生冷敏感”，上述建议请温热食用。
+            {tips.diet.reminders.map((reminder) => (
+              <div key={reminder} className="mt-1 rounded-xl border border-[#FF85A2]/10 bg-[#FFE0E0]/24 p-2 text-[11px] leading-relaxed text-[#B0776C]">
+                {reminder}
               </div>
-            )}
+            ))}
 
             <div className="text-[10px] opacity-50 text-right mt-1">
               参考资料：《中国居民膳食指南 (2022)》
@@ -103,10 +111,10 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
             </div>
             <div className="text-left">
               <span className="font-semibold text-[15px]">今日运动建议</span>
-              {exerciseGoals.length > 0 ? (
-                <span className="block text-[11px] text-[#8C7B77]">已锁定目标：{exerciseGoals[0]}</span>
+              {tips.exercise.badges.length > 0 ? (
+                <span className="block text-[11px] text-[#8C7B77]">{tips.exercise.badges[0]}</span>
               ) : (
-                <span className="block text-[11px] text-[#8C7B77]">{recommendation.exercise.intensity} · {recommendation.exercise.title}</span>
+                <span className="block text-[11px] text-[#8C7B77]">{tips.exercise.intensity} · {tips.exercise.title}</span>
               )}
               {resonance?.exercise && (
                 <span className="mt-1 block text-[11px] leading-relaxed text-[#B0776C]">{resonance.exercise}</span>
@@ -125,17 +133,14 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
           }`}
         >
           <div className="mt-2 text-sm text-[#4A3E3B]/80 bg-white/30 rounded-xl p-4 leading-relaxed flex flex-col gap-3">
+            {tips.exercise.badges.length > 0 && <BadgeRow badges={tips.exercise.badges} />}
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">推荐项目</span>
-              {exerciseGoals.includes("只能很轻") || exerciseGoals.includes("完全不想动")
-                ? "猫牛式或婴儿式瑜伽，5-10 分钟就够；不舒服时可以只休息。"
-                : recommendation.exercise.recommendation}
+              {tips.exercise.recommendation}
             </div>
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">注意事项</span>
-              {healthIssues.includes("膝关节稳定")
-                ? "今天先避开深蹲、跳跃和高冲击动作，优先散步或轻柔拉伸。"
-                : recommendation.exercise.caution}
+              {tips.exercise.caution}
             </div>
             <div className="text-[10px] opacity-50 text-right mt-1">
               参考资料：《ACOG 女性运动指南》
@@ -156,6 +161,9 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
             </div>
             <div className="text-left">
               <span className="font-semibold text-[15px]">今日工作建议</span>
+              {tips.work.badges.length > 0 && (
+                <span className="mt-1 block text-[11px] leading-relaxed text-[#8C7B77]">{tips.work.badges[0]}</span>
+              )}
               {resonance?.work && (
                 <span className="mt-1 block text-[11px] leading-relaxed text-[#B0776C]">{resonance.work}</span>
               )}
@@ -175,15 +183,15 @@ export function DailyTips({ recommendation, dietPrefs, exercisePrefs, resonance 
           <div className="mt-2 text-sm text-void-text/80 bg-white/30 rounded-xl p-4 leading-relaxed flex flex-col gap-3">
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">状态分析</span>
-              {recommendation.work.state}
+              {tips.work.state}
             </div>
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">任务安排</span>
-              {recommendation.work.tasks}
+              {tips.work.tasks}
             </div>
             <div>
               <span className="font-bold text-[13px] opacity-70 block mb-1">心理调适</span>
-              {recommendation.work.mindset}
+              {tips.work.mindset}
             </div>
             <div className="text-[10px] text-void-text/50 text-right mt-1">
               参考资料：《The Body Rhythm Approach (生理节律管理法)》
@@ -206,44 +214,14 @@ function MealCard({ label, meal }: { label: string; meal: Meal }) {
   );
 }
 
-function adjustMeal(meal: Meal, dietPrefs: DietPrefs): Meal {
-  let next = { ...meal };
-  const avoidRedMeat = dietPrefs.avoid.includes("忌红肉");
-  const avoidSeafood = dietPrefs.avoid.includes("忌海鲜水产") || dietPrefs.allergies.includes("海鲜") || dietPrefs.allergies.includes("海鲜过敏");
-  const avoidMilk = dietPrefs.allergies.includes("牛奶") || dietPrefs.allergies.includes("乳糖不耐");
-  const controlSugar = dietPrefs.healthGoals.includes("控糖") || dietPrefs.avoid.includes("高糖高油敏感");
-
-  if (avoidRedMeat && /牛肉|排骨|瘦肉/.test(next.name)) {
-    next = {
-      ...next,
-      name: next.name.replace(/番茄豆腐牛肉汤|番茄牛肉饭|牛肉|排骨|瘦肉/g, "清蒸鱼片"),
-      notes: `${next.notes}；已按忌红肉偏好替换蛋白来源`
-    };
-  }
-
-  if (avoidSeafood && /虾仁|三文鱼|鲈鱼|鱼片|鱼/.test(next.name)) {
-    next = {
-      ...next,
-      name: next.name.replace(/虾仁|三文鱼\/|三文鱼|鲈鱼|鱼片|鱼/g, "鸡肉"),
-      notes: `${next.notes}；已按海鲜过敏/忌海鲜偏好替换`
-    };
-  }
-
-  if (avoidMilk && /牛奶|酸奶/.test(next.name)) {
-    next = {
-      ...next,
-      name: next.name.replace(/牛奶|无糖酸奶|酸奶/g, "无糖豆浆"),
-      notes: `${next.notes}；已按乳糖不耐/牛奶过敏偏好替换`
-    };
-  }
-
-  if (controlSugar) {
-    next = {
-      ...next,
-      reason: `（少油少糖版）${next.reason}`,
-      notes: `${next.notes}；控糖时主食和甜味水果按饥饿程度减量`
-    };
-  }
-
-  return next;
+function BadgeRow({ badges }: { badges: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {badges.map((badge) => (
+        <span key={badge} className="rounded-full bg-white/60 px-2.5 py-1 text-[10px] text-[#8C7B77]">
+          {badge}
+        </span>
+      ))}
+    </div>
+  );
 }

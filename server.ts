@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 import { retrieveKnowledgeContext } from './src/lib/knowledge/retrieve';
+import { buildCycleReport, compactReportForPrompt, type CycleReport, type CycleReportInput } from './src/lib/reports/cycle-report';
 
 dotenv.config({ path: '.env.local', override: true });
 
@@ -96,6 +97,23 @@ const knowledgeGuardrailInstruction = `
 3. 可以把知识库内容改写成符合角色的人话，但不要提“知识库”“检索”“资料显示”。
 4. 如果知识不足，只能给低风险、保守建议，并引导用户继续记录或就医。
 5. 不主动给药物剂量；提到止痛药时，提醒按说明书或医生建议使用，并说明明显加重或影响生活要就医。
+`;
+
+const cycleReportOutputInstruction = `
+你必须只输出一个 JSON 对象，不要输出 Markdown，不要使用代码块。
+这是经期 App 的周期复盘报告，不是医学诊断。
+你只能基于提供的统计结果润色表达，不允许新增统计结果里没有的数据、次数、分数、日期或因果结论。
+语气要克制、温柔、具体，避免“完全理解你”“一定会好”“根据研究”等 AI 味表达。
+JSON 字段必须包含：
+{
+  "summary": "一句话总结",
+  "metrics": [
+    { "label": "疼痛记录", "current": "2 次 · 最高 7 分", "compare": "比上周期高 2 分", "note": "简短备注" }
+  ],
+  "clues": ["可能的观察线索，不超过 3 条"],
+  "nextExperiment": "下个周期一个很小的实验",
+  "disclaimer": "数据不足与非因果提醒"
+}
 `;
 
 type ChatMessage = {
@@ -314,6 +332,64 @@ async function callGemini(messages: ChatMessage[], systemInstruction: string) {
   return normalizeChatResponse(JSON.parse(text));
 }
 
+async function polishCycleReportWithOpenAiCompatible(localReport: CycleReport): Promise<CycleReport> {
+  const input = [
+    cycleReportOutputInstruction,
+    '-- 本地统计结果，只能基于这些内容改写 --',
+    JSON.stringify(compactReportForPrompt(localReport), null, 2)
+  ].join('\n\n');
+
+  const response = await fetch(`${llmBaseUrl}/${llmApiMode === 'chat' ? 'chat/completions' : 'responses'}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${llmApiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(llmApiMode === 'chat'
+      ? {
+          model: llmModel,
+          messages: [
+            { role: 'system', content: cycleReportOutputInstruction },
+            { role: 'user', content: input }
+          ],
+          temperature: 0.45
+        }
+      : {
+          model: llmModel,
+          input,
+          reasoning: { effort: 'none' },
+          text: { verbosity: 'low' },
+          stream: false
+        })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`${llmProviderName} report API error ${response.status}: ${detail.slice(0, 500)}`);
+  }
+
+  const data = await response.json();
+  const text = extractTextFromResponse(data);
+  const parsed = parseModelJson(text);
+
+  return {
+    ...localReport,
+    source: 'ai',
+    summary: cleanUserFacingText(parsed.summary) || localReport.summary,
+    metrics: Array.isArray(parsed.metrics) && parsed.metrics.length > 0 ? parsed.metrics.slice(0, 4).map((metric: any, index: number) => ({
+      label: cleanUserFacingText(metric?.label) || localReport.metrics[index]?.label || '记录',
+      current: cleanUserFacingText(metric?.current) || localReport.metrics[index]?.current || '',
+      compare: cleanUserFacingText(metric?.compare) || localReport.metrics[index]?.compare || '',
+      note: cleanUserFacingText(metric?.note) || localReport.metrics[index]?.note || ''
+    })) : localReport.metrics,
+    clues: Array.isArray(parsed.clues) && parsed.clues.length > 0
+      ? parsed.clues.map((item: unknown) => cleanUserFacingText(item)).filter(Boolean).slice(0, 3)
+      : localReport.clues,
+    nextExperiment: cleanUserFacingText(parsed.nextExperiment) || localReport.nextExperiment,
+    disclaimer: cleanUserFacingText(parsed.disclaimer) || localReport.disclaimer,
+  };
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
     const { messages, systemInstruction } = req.body;
@@ -338,6 +414,31 @@ app.post('/api/chat', async (req, res) => {
   } catch (error: any) {
     console.error('Error calling AI provider:', error.message);
     res.status(500).json({ error: 'Failed to generate response', details: error.message });
+  }
+});
+
+app.post('/api/cycle-report', async (req, res) => {
+  try {
+    const input = req.body as CycleReportInput;
+    if (!input || typeof input !== 'object' || !input.journal || typeof input.journal !== 'object') {
+      return res.status(400).json({ error: 'Invalid cycle report payload' });
+    }
+
+    const localReport = buildCycleReport(input);
+    if (!localReport.hasEnoughData || !llmApiKey) {
+      return res.json(localReport);
+    }
+
+    try {
+      const polishedReport = await polishCycleReportWithOpenAiCompatible(localReport);
+      return res.json(polishedReport);
+    } catch (error: any) {
+      console.error('Cycle report polish failed, returning local report:', error.message);
+      return res.json(localReport);
+    }
+  } catch (error: any) {
+    console.error('Error building cycle report:', error.message);
+    res.status(500).json({ error: 'Failed to build cycle report', details: error.message });
   }
 });
 
