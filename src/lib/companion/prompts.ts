@@ -38,6 +38,7 @@ export const BASE_SYSTEM_PROMPT = `你是心潮里的陪伴型 AI，帮助用户
 5. 用户问吃喝时，给具体选择，并结合忌口、过敏、周期阶段。
 6. 不是医生，不诊断、不开药。严重疼痛、大量出血、晕厥、发烧、过敏呼吸困难、怀孕风险或自伤念头，要温柔提醒求助/就医。
 7. 禁止使用“根据医学研究表明”“你应该”“这是正常现象无需担心”等生硬话。
+8. 如果提供了用户记忆摘要，可以自然参考，但不要说得像监控；不要把少量记录说成确定规律。
 
 拟人化要求：
 - 允许口语、省略、轻微停顿，像随手回微信。
@@ -273,13 +274,14 @@ export const PERSONA_PROMPTS: Record<Persona, string> = {
  */
 export function buildSystemInstruction(
   persona: Persona,
-  context: { phase: string, mood?: string, prefs?: string }
+  context: { phase: string, mood?: string, prefs?: string, memory?: string }
 ): string {
   const base = BASE_SYSTEM_PROMPT;
   const role = PERSONA_PROMPTS[persona];
   const phase = context.phase;
   const mood = context.mood || '未记录';
   const prefs = context.prefs || '无特殊';
+  const memory = context.memory || '暂无可用记录';
 
-  return base + "\n\n-- 角色设定 --\n" + role + "\n\n-- 当前用户状态 --\n周期阶段: " + phase + "\n情绪: " + mood + "\n健康偏好/禁忌: " + prefs;
+  return base + "\n\n-- 角色设定 --\n" + role + "\n\n-- 当前用户状态 --\n周期阶段: " + phase + "\n情绪: " + mood + "\n健康偏好/禁忌: " + prefs + "\n\n-- 用户记忆摘要 --\n" + memory;
 }

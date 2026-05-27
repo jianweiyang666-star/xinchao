@@ -12,6 +12,7 @@ import {
   buildSystemInstruction,
   type Persona
 } from "@/lib/companion/prompts";
+import { buildUserMemoryContext } from "@/lib/companion/memory";
 import { computeCycleState } from "@/lib/cycle/phases";
 
 interface Recommendation {
@@ -85,6 +86,7 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
       const lastPeriodStart = store.lastPeriodStart ? new Date(store.lastPeriodStart) : null;
       const cycleState = computeCycleState(lastPeriodStart, store.cycleLength);
       const phaseNames = { menstrual: "月经期", follicular: "卵泡期", ovulatory: "排卵期", luteal: "黄体期" };
+      const memory = buildUserMemoryContext(store);
       const systemInstruction = buildSystemInstruction(persona, {
         phase: phaseNames[cycleState.phase],
         mood: undefined, // Could map today's mood if needed
@@ -94,7 +96,8 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
           ...store.dietPreferences.healthGoals,
           ...store.dietPreferences.avoid,
           store.dietPreferences.dietMode
-        ].filter(Boolean).join(", ")
+        ].filter(Boolean).join(", "),
+        memory
       });
 
       // Prepare messages for Gemini API
