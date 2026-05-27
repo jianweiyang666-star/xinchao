@@ -53,21 +53,11 @@ export const EXERCISE_AVOIDING_TAGS = [
   "膝关节稳定",
 ];
 
-export const PAIN_RELIEF_TAGS = [
-  "热敷",
-  "止痛药",
-  "热饮",
-  "躺着",
-  "按摩",
-  "硬撑",
-  "拉伸",
-  "吐槽",
-  "都没用",
-];
+export const PERIOD_PAIN_LOCATION_TAGS = ["下腹疼痛", "腰部酸痛", "乳房压痛", "头痛"];
 
-export const PERIOD_FLOW_TAGS = ["经量少", "经量中", "经量多"];
+export const PERIOD_FLOW_TAGS = ["量少", "中量", "量多", "有血块"];
 
-export const LEAK_CONCERN_TAGS = ["担心侧漏"];
+export const PERIOD_PAIN_LEVEL_TAGS = ["没有疼痛", "轻微疼痛", "中度疼痛", "严重疼痛", "难以忍受"];
 
 export const PAIN_RELIEF_TO_LIFE_TAG: Record<string, string> = {
   热敷: "热敷下腹",
@@ -87,46 +77,48 @@ export const STATUS_TAG_GROUPS: {
   secondarySections?: {
     label: string;
     tags: string[];
+    selection?: "single" | "multiple";
   }[];
 }[] = [
   {
     key: "mood",
-    label: "情绪",
-    description: "记录今天的心情起伏",
-    tags: ["平静", "开心", "有活力", "情绪波动", "焦虑", "低落", "易怒", "疲惫"],
+    label: "心情",
+    description: "记录今天出现过的心情",
+    tags: ["平静", "快乐", "有活力", "欢悦", "情绪波动", "恼怒", "伤心", "焦虑", "抑郁", "内疚", "反复想同一件事", "精神不振", "漠然无感", "困惑", "自我苛刻"],
   },
   {
     key: "symptom",
     label: "症状",
-    description: "疼痛、不适、身体感受",
-    tags: ["一切正常", "腹痛", "腰酸", "头痛", "乳房胀痛", "疲倦", "水肿", "失眠"],
+    description: "记录今天身体已经出现的症状",
+    tags: ["一切正常", "绞痛", "乳房压痛", "头痛", "粉刺", "背痛", "疲倦", "渴望", "失眠", "腹痛", "阴道瘙痒", "阴道干涩", "水肿"],
+  },
+  {
+    key: "period",
+    label: "月经期",
+    description: "记录本次经期的身体感受",
+    tags: [],
     secondarySections: [
-      {
-        label: "经期补充",
-        tags: [...PERIOD_FLOW_TAGS, ...LEAK_CONCERN_TAGS],
-      },
-      {
-        label: "已用缓解方式",
-        tags: PAIN_RELIEF_TAGS,
-      },
+      { label: "疼痛位置", tags: PERIOD_PAIN_LOCATION_TAGS },
+      { label: "月经量", tags: PERIOD_FLOW_TAGS, selection: "single" },
+      { label: "疼痛程度", tags: PERIOD_PAIN_LEVEL_TAGS, selection: "single" },
     ],
   },
   {
     key: "diet",
     label: "饮食",
-    description: "记录今天吃喝和忌口",
-    tags: ["正常", "想吃甜", "想吃辣", "想喝热的", "食欲差", "胀气", "外卖", "喝水少"],
+    description: "记录今天已经吃过或喝过的内容",
+    tags: ["正常吃饭", "吃了甜食", "吃了辣食", "喝了热饮", "喝了冷饮", "食欲不好", "有胀气", "喝水较少"],
   },
   {
     key: "exercise",
-    label: "运动",
-    description: "记录活动、拉伸和休息",
-    tags: ["没运动", "散步", "拉伸", "瑜伽", "力量训练", "久坐", "运动后舒服", "适合休息"],
+    label: "体力活动",
+    description: "记录今天已经完成的运动",
+    tags: ["没有锻炼", "瑜伽", "健身", "健身操和舞蹈", "游泳", "团队运动", "跑步", "骑自行车", "散步"],
   },
   {
     key: "sexual",
     label: "性行为",
-    description: "记录到当天状态",
-    tags: ["无", "有", "使用保护", "未使用保护", "事后不适", "轻微疼痛", "出血", "不想记录细节"],
+    description: "记录当天已经发生的情况",
+    tags: ["没有性行为", "发生了性行为", "使用了保护", "未使用保护", "事后感到不适", "发生轻微疼痛", "有出血", "不记录细节"],
   },
 ];

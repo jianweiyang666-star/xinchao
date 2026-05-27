@@ -50,16 +50,16 @@ export function buildPersonalizedDailyTips(input: PersonalizedDailyTipsInput): P
     hasGlutenAvoid(input.dietPrefs) ? "已避开麸质" : "",
     hasSugarControl(input.dietPrefs) ? "控糖版本" : "",
     hasColdSensitive(input.dietPrefs, goal) ? "温热优先" : "",
-    dietSignals.includes("胀气") ? "减轻胃肠负担" : "",
-    dietSignals.includes("想吃甜") ? "保留一点甜" : "",
+    dietSignals.some(tag => /胀气/.test(tag)) ? "减轻胃肠负担" : "",
+    dietSignals.some(tag => /甜/.test(tag)) ? "保留一点甜" : "",
   ]);
 
   const dietReminders = buildDietReminders(dietContext);
 
   const painLevel = input.journalEntry?.pain?.level ?? 0;
   const hasPain = painLevel >= 3 || symptomSignals.some(tag => /腹痛|痛|疼|腰酸|乳房胀痛/.test(tag));
-  const hasFatigue = symptomSignals.some(tag => /疲倦|疲惫|水肿|失眠/.test(tag)) || moodSignals.includes("疲惫");
-  const needsRest = hasPain || hasFatigue || exerciseSignals.includes("适合休息") || exerciseSignals.includes("没运动");
+  const hasFatigue = symptomSignals.some(tag => /疲倦|疲惫|水肿|失眠/.test(tag)) || moodSignals.some(tag => /疲惫|精神不振/.test(tag));
+  const needsRest = hasPain || hasFatigue || exerciseSignals.some(tag => /休息|没运动|没有运动|没有锻炼/.test(tag));
   const lowExercisePreference = input.exercisePrefs.goals.some(tag => /完全不想动|只能很轻/.test(tag));
   const avoidHighIntensity = input.exercisePrefs.avoiding.includes("避免高强度");
 
@@ -150,14 +150,14 @@ function adjustMeal(meal: Meal, context: { dietPrefs: DietPrefs; dietSignals: st
     };
   }
 
-  if (context.dietSignals.includes("胀气") || context.symptomSignals.includes("水肿")) {
+  if (context.dietSignals.some(tag => /胀气/.test(tag)) || context.symptomSignals.some(tag => /水肿/.test(tag))) {
     next = {
       ...next,
       pairing: `${next.pairing}；今天尽量少油少盐，吃到七八分饱`,
     };
   }
 
-  if (context.dietSignals.includes("食欲差")) {
+  if (context.dietSignals.some(tag => /食欲/.test(tag))) {
     next = {
       ...next,
       pairing: `${next.pairing}；没胃口就先吃半份温热主食和蛋白`,
@@ -172,16 +172,16 @@ function buildDietReminders(context: { dietPrefs: DietPrefs; dietSignals: string
   if (hasColdSensitive(context.dietPrefs, context.goal)) {
     reminders.push("本周期在观察冷饮/生冷，今天优先选温热版本，先别空腹喝冰的。");
   }
-  if (context.dietSignals.includes("想吃甜")) {
+  if (context.dietSignals.some(tag => /甜/.test(tag))) {
     reminders.push("想吃甜是可以的，先选小份、少糖、温热一点的版本。");
   }
-  if (context.dietSignals.includes("想吃辣") || context.dietPrefs.avoid.includes("辛辣敏感")) {
+  if (context.dietSignals.some(tag => /辣/.test(tag)) || context.dietPrefs.avoid.includes("辛辣敏感")) {
     reminders.push("今天如果想吃辣，先降辣度，避免重油重盐一起叠加。");
   }
-  if (context.dietSignals.includes("胀气")) {
+  if (context.dietSignals.some(tag => /胀气/.test(tag))) {
     reminders.push("已经记录胀气，晚餐先走清淡、熟食、少量多次。");
   }
-  if (context.dietSignals.includes("外卖")) {
+  if (context.dietSignals.some(tag => /外卖/.test(tag))) {
     reminders.push("点外卖时优先选热汤饭、蒸/炖/煮，少选冰饮和油炸。");
   }
   return reminders.slice(0, 3);
@@ -225,7 +225,7 @@ function buildWorkRecommendation(
   base: WorkRecommendation,
   context: { hasPain: boolean; hasFatigue: boolean; moodSignals: string[] }
 ): WorkRecommendation & { badges: string[] } {
-  const hasMoodLoad = context.moodSignals.some(tag => /情绪波动|焦虑|低落|易怒|烦躁|疲惫/.test(tag));
+  const hasMoodLoad = context.moodSignals.some(tag => /情绪波动|焦虑|低落|易怒|恼怒|伤心|抑郁|内疚|精神不振|漠然无感/.test(tag));
   if (!context.hasPain && !context.hasFatigue && !hasMoodLoad) {
     return { ...base, badges: [] };
   }

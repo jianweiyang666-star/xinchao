@@ -7,10 +7,29 @@ export const PHASE_LABELS: Record<CyclePhase, { medical: string; subtitle: strin
   luteal: { medical: "黄体期", subtitle: "沉淀与内省" },
 };
 
-export function computeCycleState(lastStart: Date | null, cycleLength = 28, periodLength = 5, cursorDate = new Date()) {
+export const DEFAULT_PERIOD_LENGTH = 7;
+
+export function parsePeriodStart(value: string | null): Date | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : atLocalStartOfDay(parsed);
+}
+
+export function formatLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function computeCycleState(lastStart: Date | null, cycleLength = 28, periodLength = DEFAULT_PERIOD_LENGTH, cursorDate = new Date()) {
   if (!lastStart) return { phase: "follicular" as CyclePhase, cycleDay: 10, periodLength, cycleLength };
-  
-  const diffTime = cursorDate.getTime() - lastStart.getTime();
+
+  const diffTime = atLocalStartOfDay(cursorDate).getTime() - atLocalStartOfDay(lastStart).getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   let cycleDay = (diffDays % cycleLength) + 1;
   if (cycleDay <= 0) cycleDay += cycleLength;
@@ -32,10 +51,6 @@ function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
-}
-
-function formatDate(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 export function getPeriodPrediction(
@@ -61,8 +76,8 @@ export function getPeriodPrediction(
   return {
     nextPeriodStart,
     reminderDate,
-    nextPeriodStartKey: formatDate(nextPeriodStart),
-    reminderDateKey: formatDate(reminderDate),
+    nextPeriodStartKey: formatLocalDateKey(nextPeriodStart),
+    reminderDateKey: formatLocalDateKey(reminderDate),
     daysUntilPeriod,
     daysUntilReminder,
     isReminderWindow,

@@ -21,6 +21,11 @@ export interface CycleReport {
     label: string;
     value: string;
   };
+  periodComparison: {
+    current: string;
+    previous: string;
+    interval: string;
+  } | null;
   metrics: CycleReportMetric[];
   clues: string[];
   nextExperiment: string;
@@ -43,16 +48,29 @@ const FATIGUE_TAG = /疲惫|疲倦|没力气|精神不振|乏力/;
 const PAIN_TAG = /痛|疼|酸|痉挛/;
 const COLD_DRINK_TAG = /冰|冷饮|生冷/;
 const STIMULATING_FOOD_TAG = /辣|辛辣|咖啡|浓茶|甜|高糖|外卖|油/;
-const ACTIVE_EXERCISE_TAG = /散步|拉伸|瑜伽|普拉提|慢跑|力量|骑行|游泳|运动|活动/;
+const ACTIVE_EXERCISE_TAG = /散步|拉伸|瑜伽|普拉提|慢跑|跑步|力量|健身|骑行|骑自行车|游泳|团队运动|运动|活动/;
 
 export function buildCycleReport(input: CycleReportInput): CycleReport {
   const todayKey = input.todayKey || toDateKey(new Date());
   const today = parseDateKey(todayKey);
-  const cycleStart = input.lastPeriodStart ? atStartOfDay(new Date(input.lastPeriodStart)) : null;
   const rangeEnd = today || new Date();
+  const configuredCycleStart = parseStoredPeriodStart(input.lastPeriodStart);
+  const recordedCycleStarts = sortedEntries(input.journal)
+    .filter(([, entry]) => entry.periodStarted)
+    .map(([key]) => parseDateKey(key))
+    .filter((date): date is Date => Boolean(date && date.getTime() <= rangeEnd.getTime()));
+  const cycleStarts = [...recordedCycleStarts, ...(configuredCycleStart ? [configuredCycleStart] : [])]
+    .sort((a, b) => a.getTime() - b.getTime())
+    .filter((date, index, dates) => index === 0 || date.getTime() !== dates[index - 1].getTime());
+  const cycleStart = cycleStarts[cycleStarts.length - 1] || null;
+  const previousCycleStart = cycleStarts[cycleStarts.length - 2] || null;
   const rangeStart = cycleStart ? addDays(cycleStart, -14) : addDays(rangeEnd, -14);
-  const previousRangeStart = cycleStart ? addDays(rangeStart, -input.cycleLength) : addDays(rangeStart, -28);
-  const previousRangeEnd = cycleStart ? addDays(rangeEnd, -input.cycleLength) : addDays(rangeEnd, -28);
+  const previousRangeStart = previousCycleStart
+    ? addDays(previousCycleStart, -14)
+    : cycleStart ? addDays(rangeStart, -input.cycleLength) : addDays(rangeStart, -28);
+  const previousRangeEnd = previousCycleStart && cycleStart
+    ? addDays(previousCycleStart, Math.max(0, Math.round((rangeEnd.getTime() - cycleStart.getTime()) / (24 * 60 * 60 * 1000))))
+    : cycleStart ? addDays(rangeEnd, -input.cycleLength) : addDays(rangeEnd, -28);
 
   const entries = sortedEntries(input.journal);
   const currentEntries = entries.filter(([key]) => isBetween(key, rangeStart, rangeEnd));
@@ -60,7 +78,7 @@ export function buildCycleReport(input: CycleReportInput): CycleReport {
   const currentStats = summarizeEntries(currentEntries);
   const previousStats = summarizeEntries(previousEntries);
 
-  const hasEnoughData = currentStats.recordCount >= 3 || currentStats.maxPain > 0 || Boolean(input.onboardingAnswers);
+  const hasEnoughData = currentStats.recordCount >= 3 || currentStats.maxPain > 0 || Boolean(input.onboardingAnswers) || Boolean(cycleStart && previousCycleStart);
   if (!hasEnoughData) {
     return {
       source: "local",
@@ -70,8 +88,9 @@ export function buildCycleReport(input: CycleReportInput): CycleReport {
       rangeLabel: "最近两周",
       highestPain: { label: "本周期最高痛感", value: "--" },
       hardestMoment: { label: "最难受时间", value: "暂无记录" },
+      periodComparison: null,
       metrics: defaultMetrics(),
-      clues: ["可以先从疼痛、饮食、运动或情绪里选一个顺手记录。"],
+      clues: ["可以先从疼痛、饮食、体力活动或心情里选一个顺手记录。"],
       nextExperiment: "这个周期先不用改变习惯，先把真实感受记下来就够了。",
       disclaimer: "目前记录还不多，先不做规律判断。",
     };
@@ -98,6 +117,11 @@ export function buildCycleReport(input: CycleReportInput): CycleReport {
       label: "最难受时间",
       value: hardestMoment,
     },
+    periodComparison: cycleStart && previousCycleStart ? {
+      current: formatMonthDay(cycleStart),
+      previous: formatMonthDay(previousCycleStart),
+      interval: `间隔 ${Math.round((cycleStart.getTime() - previousCycleStart.getTime()) / (24 * 60 * 60 * 1000))} 天`,
+    } : null,
     metrics: [
       {
         label: "疼痛记录",
@@ -114,10 +138,10 @@ export function buildCycleReport(input: CycleReportInput): CycleReport {
         note: currentStats.exerciseCount > 0 ? "以散步、拉伸或低负担活动为主" : "可以先从散步或拉伸开始记录",
       },
       {
-        label: "情绪波动",
+        label: "心情波动",
         current: `${currentStats.moodFluctuationCount} 次`,
         compare: compareCount(currentStats.moodFluctuationCount, previousStats.moodFluctuationCount),
-        note: currentStats.moodFluctuationCount > 0 ? "可继续观察经前几天是否更明显" : "暂时没有明显情绪波动记录",
+        note: currentStats.moodFluctuationCount > 0 ? "可继续观察经前几天是否更明显" : "暂时没有明显心情波动记录",
       },
       {
         label: "疲惫记录",
@@ -139,6 +163,7 @@ export function compactReportForPrompt(report: CycleReport) {
     rangeLabel: report.rangeLabel,
     highestPain: report.highestPain,
     hardestMoment: report.hardestMoment,
+    periodComparison: report.periodComparison,
     metrics: report.metrics,
     clues: report.clues,
     nextExperiment: report.nextExperiment,
@@ -162,7 +187,7 @@ function summarizeEntries(entries: JournalPair[]) {
     const hasAnyRecord = tags.length > 0 || Boolean(entry.pain) || Boolean(entry.periodStarted) || Boolean(entry.note);
     if (hasAnyRecord) recordCount += 1;
 
-    if (entry.pain) {
+    if (entry.pain && entry.pain.level > 0) {
       painCount += 1;
       if (entry.pain.level > maxPain) {
         maxPain = entry.pain.level;
@@ -172,7 +197,7 @@ function summarizeEntries(entries: JournalPair[]) {
       painCount += 1;
     }
 
-    if (tags.some(tag => ACTIVE_EXERCISE_TAG.test(tag)) && !tags.includes("没运动")) exerciseCount += 1;
+    if (tags.some(tag => ACTIVE_EXERCISE_TAG.test(tag)) && !tags.some(tag => /没运动|没有运动|没有锻炼/.test(tag))) exerciseCount += 1;
     if (entry.statusTags?.mood?.some(tag => NEGATIVE_MOOD.test(tag))) moodFluctuationCount += 1;
     if (tags.some(tag => FATIGUE_TAG.test(tag))) fatigueCount += 1;
     if (tags.some(tag => COLD_DRINK_TAG.test(tag))) coldDrinkCount += 1;
@@ -201,7 +226,7 @@ function buildClues(stats: ReturnType<typeof summarizeEntries>) {
     clues.push(`运动记录已经有 ${stats.exerciseCount} 次，可以继续看轻运动后身体会不会更舒服。`);
   }
   if (stats.moodFluctuationCount > 0 || stats.fatigueCount > 0) {
-    clues.push("情绪和疲惫记录可以放在一起看，后面更容易分辨压力、睡眠和身体不适的先后关系。");
+    clues.push("心情和疲惫记录可以放在一起看，后面更容易分辨压力、睡眠和身体不适的先后关系。");
   }
   if (stats.stimulantFoodCount > 0 && stats.coldDrinkCount === 0) {
     clues.push("饮食里已经出现刺激性或高负担线索，可以继续观察辛辣、咖啡、甜食和不适感是否同日出现。");
@@ -219,7 +244,7 @@ function buildNextExperiment(goal: string, stats: ReturnType<typeof summarizeEnt
   if (/运动|拉伸|走路|活动/.test(goal) || stats.exerciseCount > 0) {
     return "下个周期先不用增加很多运动，只保留 2 次轻运动，比如散步或拉伸，看看痛感和疲惫有没有变化。";
   }
-  if (/熬夜|睡眠|压力|情绪/.test(goal) || stats.moodFluctuationCount > 0 || stats.fatigueCount > 0) {
+  if (/熬夜|睡眠|压力|情绪|心情/.test(goal) || stats.moodFluctuationCount > 0 || stats.fatigueCount > 0) {
     return "下个周期先观察睡眠和压力，不用追求自律，只试着在经前 3 天减少熬夜和高压沟通。";
   }
   return "下个周期先不用改变所有习惯，只选择一个最容易做到的小动作，坚持记录，看看身体有没有变化。";
@@ -245,7 +270,7 @@ function defaultMetrics(): CycleReportMetric[] {
   return [
     { label: "疼痛记录", current: "0 次", compare: "暂无可比数据", note: "还没有痛感记录" },
     { label: "运动记录", current: "0 次", compare: "暂无可比数据", note: "还没有运动记录" },
-    { label: "情绪波动", current: "0 次", compare: "暂无可比数据", note: "还没有情绪记录" },
+    { label: "心情波动", current: "0 次", compare: "暂无可比数据", note: "还没有心情记录" },
     { label: "疲惫记录", current: "0 次", compare: "暂无可比数据", note: "还没有疲惫记录" },
   ];
 }
@@ -255,7 +280,7 @@ function sortedEntries(journal: Record<string, JournalEntry>): JournalPair[] {
 }
 
 function flattenTags(entry: JournalEntry) {
-  const categories: Exclude<StatusTagCategory, "sexual">[] = ["mood", "symptom", "diet", "exercise"];
+  const categories: Exclude<StatusTagCategory, "sexual">[] = ["mood", "symptom", "period", "diet", "exercise"];
   return categories.flatMap(category => entry.statusTags?.[category] ?? []);
 }
 
@@ -269,6 +294,12 @@ function parseDateKey(key: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
   if (!match) return null;
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function parseStoredPeriodStart(value: string | null): Date | null {
+  if (!value) return null;
+  const key = value.slice(0, 10);
+  return parseDateKey(key);
 }
 
 function toDateKey(date: Date) {

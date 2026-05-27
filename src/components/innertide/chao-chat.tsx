@@ -13,7 +13,7 @@ import {
   type Persona
 } from "@/lib/companion/prompts";
 import { buildUserMemoryContext } from "@/lib/companion/memory";
-import { computeCycleState } from "@/lib/cycle/phases";
+import { computeCycleState, parsePeriodStart } from "@/lib/cycle/phases";
 
 interface Recommendation {
   title: string;
@@ -83,7 +83,7 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
 
     try {
       // Build context for AI
-      const lastPeriodStart = store.lastPeriodStart ? new Date(store.lastPeriodStart) : null;
+      const lastPeriodStart = parsePeriodStart(store.lastPeriodStart);
       const cycleState = computeCycleState(lastPeriodStart, store.cycleLength);
       const phaseNames = { menstrual: "月经期", follicular: "卵泡期", ovulatory: "排卵期", luteal: "黄体期" };
       const memory = buildUserMemoryContext(store);
@@ -159,7 +159,7 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col"
+      className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col overflow-hidden"
       style={{
         background: "linear-gradient(180deg, rgba(208, 197, 230, 0.95) 0%, rgba(238, 216, 213, 0.95) 50%, rgba(253, 240, 204, 0.95) 100%)",
         backdropFilter: "blur(20px)",
@@ -281,7 +281,7 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* 快捷选项 & 输入区 */}
-      <div className="px-4 pb-8 pt-2 flex flex-col gap-3">
+      <div className="flex flex-col gap-3 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2">
         {/* Quick Actions */}
         {activeQuickActions.length > 0 && !loading && (
           <div className="mx-auto flex w-full max-w-md flex-wrap gap-2 px-2 animate-ink-rise">
@@ -310,7 +310,7 @@ export function ChaoChat({ onClose }: { onClose: () => void }) {
             }}
             placeholder={placeholder}
             rows={1}
-            className="flex-1 resize-none bg-transparent text-[14px] text-void-text font-medium placeholder:text-void-text/40 focus:outline-none py-1 transition-all"
+            className="flex-1 resize-none bg-transparent py-1 text-[16px] font-medium text-void-text placeholder:text-void-text/40 focus:outline-none transition-all"
           />
           <button
             type="button"

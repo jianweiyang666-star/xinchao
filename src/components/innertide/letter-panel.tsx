@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mail, Sparkles, Loader2 } from "lucide-react";
 import { useInnertideStore, type LetterRecord, todayKey } from "@/lib/store";
-import { computeCycleState } from "@/lib/cycle/phases";
+import { computeCycleState, parsePeriodStart } from "@/lib/cycle/phases";
 
 type Scope = LetterRecord["scope"];
 
@@ -33,12 +33,13 @@ export function LetterPanel() {
     if (autoTriggered.current) return;
     if (!store.lastPeriodStart) return;
 
-    const last = new Date(store.lastPeriodStart);
+    const last = parsePeriodStart(store.lastPeriodStart);
+    if (!last) return;
     const cycle = computeCycleState(last);
     const justEnded = cycle.cycleDay === cycle.periodLength + 1 || cycle.cycleDay === cycle.periodLength + 2;
     if (!justEnded) return;
 
-    const cycleStartKey = last.toISOString().slice(0, 10);
+    const cycleStartKey = todayKey(last);
     const alreadyHas = lettersDesc.some((l) => l.scope === "cycle-end" && l.rangeStart === cycleStartKey);
     if (alreadyHas) return;
 

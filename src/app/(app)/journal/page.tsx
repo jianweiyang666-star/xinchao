@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Heart, TrendingUp, Activity, X } from "lucide-react";
 import { useInnertideStore, todayKey, type JournalEntry } from "@/lib/store";
-import { computeCycleState } from "@/lib/cycle/phases";
+import { computeCycleState, DEFAULT_PERIOD_LENGTH, formatLocalDateKey, parsePeriodStart } from "@/lib/cycle/phases";
 import { FloatingIsland } from "@/components/innertide/floating-island";
 import { LetterPanel } from "@/components/innertide/letter-panel";
 import { motion, AnimatePresence } from "motion/react";
@@ -36,9 +36,9 @@ export default function JournalPage() {
   if (!loaded) return null;
 
   const selectedEntry: JournalEntry = store.journal[selectedDate] ?? {};
-  const lastStart = store.lastPeriodStart ? new Date(store.lastPeriodStart) : null;
-  const selectedDateObj = new Date(selectedDate);
-  const cycleAtSelected = computeCycleState(lastStart, 28, 5, selectedDateObj);
+  const lastStart = parsePeriodStart(store.lastPeriodStart);
+  const selectedDateObj = parsePeriodStart(selectedDate) ?? new Date();
+  const cycleAtSelected = computeCycleState(lastStart, store.cycleLength, DEFAULT_PERIOD_LENGTH, selectedDateObj);
 
   const isToday = selectedDate === todayKey();
 
@@ -77,16 +77,16 @@ export default function JournalPage() {
             <div className="flex flex-col items-center flex-1">
               <CalendarIcon className="w-5 h-5 text-[#D4A373] mb-3 opacity-90" />
               <div className="text-[11px] text-[#8C7B77] mb-1">周期长度</div>
-              <div className="text-3xl font-serif text-[#4A3E3B] mb-1 flex items-baseline gap-1">28<span className="text-sm font-sans tracking-normal opacity-80">天</span></div>
-              <div className="text-[10px] text-[#8C7B77]">近3次平均</div>
+              <div className="text-3xl font-serif text-[#4A3E3B] mb-1 flex items-baseline gap-1">{store.cycleLength}<span className="text-sm font-sans tracking-normal opacity-80">天</span></div>
+              <div className="text-[10px] text-[#8C7B77]">当前设置</div>
             </div>
             
             {/* Period Length */}
             <div className="flex flex-col items-center flex-1 border-x border-[#DECEC1]/50 px-2">
               <Heart className="w-5 h-5 text-[#D4A373] mb-3 opacity-90" />
               <div className="text-[11px] text-[#8C7B77] mb-1">经期长度</div>
-              <div className="text-3xl font-serif text-[#4A3E3B] mb-1 flex items-baseline gap-1">5<span className="text-sm font-sans tracking-normal opacity-80">天</span></div>
-              <div className="text-[10px] text-[#8C7B77]">上一次</div>
+              <div className="text-3xl font-serif text-[#4A3E3B] mb-1 flex items-baseline gap-1">{DEFAULT_PERIOD_LENGTH}<span className="text-sm font-sans tracking-normal opacity-80">天</span></div>
+              <div className="text-[10px] text-[#8C7B77]">预测范围</div>
             </div>
             
             {/* Regularity */}
@@ -134,7 +134,7 @@ export default function JournalPage() {
           ))}
           {days.map((day, i) => {
             if (!day) return <div key={i} aria-hidden />;
-            const key = day.toISOString().slice(0, 10);
+            const key = formatLocalDateKey(day);
             const entry = store.journal[key];
             const isSelected = key === selectedDate;
             const isToday = key === todayKey();

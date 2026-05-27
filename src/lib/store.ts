@@ -6,6 +6,7 @@ export interface JournalEntry {
     level: number; // 0-5
     locations: string[];
   };
+  exerciseMinutes?: number;
   statusTags?: Partial<Record<StatusTagCategory, string[]>>;
   periodStarted?: boolean;
   sexualActivity?: {
@@ -15,7 +16,7 @@ export interface JournalEntry {
   mode?: 'healing' | 'resonance';
 }
 
-export type StatusTagCategory = 'mood' | 'symptom' | 'diet' | 'exercise' | 'sexual';
+export type StatusTagCategory = 'mood' | 'symptom' | 'period' | 'diet' | 'exercise' | 'sexual';
 
 export interface LetterRecord {
   createdAt: string;
@@ -86,7 +87,7 @@ interface State {
 
 let globalStore: State = {
   nickname: null,
-  lastPeriodStart: new Date().toISOString(),
+  lastPeriodStart: null,
   cycleLength: 28,
   onboardingCompleted: false,
   onboardingAnswers: null,
@@ -157,6 +158,7 @@ export function useInnertideStore() {
         parsed.onboardingCompleted = Boolean(parsed.onboardingCompleted);
         parsed.onboardingAnswers = parsed.onboardingAnswers || null;
         parsed.observationGoal = parsed.observationGoal || null;
+        parsed.journal = migrateJournalEntries(parsed.journal || {});
         globalStore = { ...globalStore, ...parsed };
         setStore(globalStore);
       }
@@ -219,5 +221,76 @@ export function useInnertideStore() {
 }
 
 export function todayKey(d = new Date()) {
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function migrateJournalEntries(journal: Record<string, JournalEntry>) {
+  return Object.fromEntries(
+    Object.entries(journal).map(([date, entry]) => {
+      const statusTags = entry.statusTags ?? {};
+      const periodTags = [
+        ...(statusTags.period ?? []),
+        ...(statusTags.symptom ?? []).filter((tag) =>
+          ["经量少", "经量中", "经量多", "担心侧漏"].includes(tag)
+        ),
+      ];
+
+      return [date, {
+        ...entry,
+        statusTags: {
+          ...statusTags,
+          mood: mapTags(statusTags.mood, {
+            感到平静: "平静",
+            感到开心: "快乐",
+            精力不错: "有活力",
+            有情绪波动: "情绪波动",
+            感到焦虑: "焦虑",
+            情绪低落: "抑郁",
+            容易生气: "恼怒",
+            感到疲惫: "精神不振",
+          }),
+          symptom: mapTags(
+            (statusTags.symptom ?? []).filter((tag) =>
+              ![
+                "经量少", "经量中", "经量多", "担心侧漏",
+                "热敷", "止痛药", "热饮", "躺着", "按摩", "硬撑", "拉伸", "吐槽", "都没用",
+              ].includes(tag)
+            ),
+            {
+              没有不适: "一切正常",
+              出现腹痛: "腹痛",
+              出现腰酸: "背痛",
+              出现头痛: "头痛",
+              乳房胀痛: "乳房压痛",
+              感到疲倦: "疲倦",
+              出现水肿: "水肿",
+              昨晚失眠: "失眠",
+            }
+          ),
+          period: mapTags(periodTags, {
+            经量少: "量少",
+            经量中: "中量",
+            经量多: "量多",
+            担心侧漏: "发生侧漏",
+          }),
+          diet: (statusTags.diet ?? []).filter((tag) => tag !== "吃了外卖"),
+          exercise: mapTags(statusTags.exercise, {
+            今天没有运动: "没有锻炼",
+            散步了: "散步",
+            做了拉伸: "瑜伽",
+            做了瑜伽: "瑜伽",
+            完成力量训练: "健身",
+            今天休息了: "没有锻炼",
+          }),
+        },
+      }];
+    })
+  ) as Record<string, JournalEntry>;
+}
+
+function mapTags(tags: string[] | undefined, replacement: Record<string, string>) {
+  return [...new Set((tags ?? []).map((tag) => replacement[tag] ?? tag))];
 }

@@ -11,6 +11,7 @@ test("buildCycleReport summarizes current cycle records and compares previous cy
     onboardingAnswers: null,
     journal: {
       "2026-04-25": {
+        periodStarted: true,
         pain: { level: 5, locations: ["小腹"] },
         statusTags: { exercise: ["散步"], symptom: ["腹痛"] }
       },
@@ -41,6 +42,11 @@ test("buildCycleReport summarizes current cycle records and compares previous cy
   assert.ok(report.clues.some(line => /冰饮/.test(line)));
   assert.match(report.nextExperiment, /冷饮/);
   assert.match(report.disclaimer, /不代表确定因果/);
+  assert.deepEqual(report.periodComparison, {
+    current: "5月23日",
+    previous: "4月25日",
+    interval: "间隔 28 天"
+  });
 });
 
 test("buildCycleReport returns an empty state when records are scarce", () => {
@@ -56,4 +62,22 @@ test("buildCycleReport returns an empty state when records are scarce", () => {
   assert.equal(report.hasEnoughData, false);
   assert.equal(report.highestPain.value, "--");
   assert.match(report.summary, /再记录几次/);
+});
+
+test("buildCycleReport exposes period comparison after two recorded starts", () => {
+  const report = buildCycleReport({
+    todayKey: "2026-05-27",
+    lastPeriodStart: "2026-05-23",
+    cycleLength: 28,
+    observationGoal: null,
+    onboardingAnswers: null,
+    journal: {
+      "2026-04-25": { periodStarted: true },
+      "2026-05-23": { periodStarted: true }
+    }
+  });
+
+  assert.equal(report.hasEnoughData, true);
+  assert.equal(report.periodComparison?.previous, "4月25日");
+  assert.equal(report.periodComparison?.interval, "间隔 28 天");
 });

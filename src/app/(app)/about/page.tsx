@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Bell, ChevronLeft, X } from "lucide-react";
 import { useInnertideStore, type DietPrefs, type ExercisePrefs } from "@/lib/store";
-import { getPeriodPrediction } from "@/lib/cycle/phases";
+import { getPeriodPrediction, parsePeriodStart } from "@/lib/cycle/phases";
 import {
   DIET_ALLERGY_TAGS,
   DIET_HEALTH_GOAL_TAGS,
@@ -49,7 +49,7 @@ export default function AboutPage() {
     setExercisePanelOpen(false);
   };
 
-  const lastStart = store.lastPeriodStart ? new Date(store.lastPeriodStart) : null;
+  const lastStart = parsePeriodStart(store.lastPeriodStart);
   const prediction = getPeriodPrediction(
     lastStart,
     store.cycleLength,
@@ -110,7 +110,7 @@ export default function AboutPage() {
             onChange={(e) =>
               update({
                 lastPeriodStart: e.target.value
-                  ? new Date(e.target.value).toISOString()
+                  ? e.target.value
                   : null,
               })
             }
@@ -120,19 +120,21 @@ export default function AboutPage() {
 
         <Field label="周期长度">
           <div className="flex items-center justify-between border-b border-[#DECEC1] py-2">
-            <input
-              type="number"
-              min={21}
-              max={45}
+            <select
               value={store.cycleLength}
               onChange={(e) => {
                 const next = Number(e.target.value);
                 if (!Number.isFinite(next)) return;
                 update({ cycleLength: Math.min(45, Math.max(21, next)) });
               }}
-              className="w-24 bg-transparent text-base text-[#4A3E3B] focus:outline-none"
-            />
-            <span className="text-sm text-[#8C7B77]">天</span>
+              className="w-full appearance-none bg-transparent py-1 text-base text-[#4A3E3B] focus:outline-none"
+              aria-label="选择周期长度"
+            >
+              {Array.from({ length: 25 }, (_, index) => index + 21).map(days => (
+                <option key={days} value={days}>{days} 天</option>
+              ))}
+            </select>
+            <span className="text-sm text-[#8C7B77]">滑动选择</span>
           </div>
         </Field>
 

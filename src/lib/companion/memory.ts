@@ -17,8 +17,9 @@ type MemoryStore = {
 };
 
 const CATEGORY_LABELS: Record<Exclude<StatusTagCategory, "sexual">, string> = {
-  mood: "情绪",
+  mood: "心情",
   symptom: "身体",
+  period: "月经期",
   diet: "饮食",
   exercise: "运动"
 };
@@ -96,8 +97,8 @@ function buildOnboardingLine(answers: OnboardingAnswers | null): string {
 
 function buildLastPeriodLine(lastPeriodStart: string | null): string {
   if (!lastPeriodStart) return "";
-  const date = new Date(lastPeriodStart);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseDateKey(lastPeriodStart.slice(0, 10));
+  if (!date) return "";
   return `最近一次月经开始：${formatDateShort(date)}。`;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useInnertideStore } from "@/lib/store";
+import { todayKey, useInnertideStore } from "@/lib/store";
 import { Zap, Heart } from "lucide-react";
 
 export function ModeController() {
@@ -36,7 +36,7 @@ export function ModeController() {
          <p className="text-[10px] uppercase tracking-[0.3em] opacity-40">内心起伏</p>
          <div className="flex items-center justify-between w-full px-2">
             {[0, 1, 2, 3, 4].map((v) => {
-              const active = (store.journal[new Date().toISOString().slice(0, 10)]?.mood ?? 2) === v;
+              const active = (store.journal[todayKey()]?.mood ?? 2) === v;
               return (
                 <button
                   key={v}

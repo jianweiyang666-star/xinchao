@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Activity, Apple, Bell, CalendarDays, Check, ChevronLeft, ChevronRight, Droplets, Dumbbell, Heart, Moon, Plus } from "lucide-react";
 import { FloatingIsland } from "@/components/innertide/floating-island";
@@ -8,9 +8,9 @@ import { ChaoFab } from "@/components/innertide/chao-fab";
 import { BgmToggle } from "@/components/innertide/bgm-toggle";
 import { DailyTips } from "@/components/innertide/daily-tips";
 import { useInnertideStore, type JournalEntry, type StatusTagCategory } from "@/lib/store";
-import { computeCycleState, getPeriodPrediction, PHASE_LABELS, type CyclePhase } from "@/lib/cycle/phases";
+import { computeCycleState, DEFAULT_PERIOD_LENGTH, getPeriodPrediction, parsePeriodStart, PHASE_LABELS, type CyclePhase } from "@/lib/cycle/phases";
 import { getDailyRecommendation } from "@/data/daily-recommendations";
-import { STATUS_TAG_GROUPS } from "@/data/knowledge-tags";
+import { PERIOD_PAIN_LEVEL_TAGS, PERIOD_PAIN_LOCATION_TAGS, STATUS_TAG_GROUPS } from "@/data/knowledge-tags";
 import { buildCycleReport, type CycleReport } from "@/lib/reports/cycle-report";
 
 function startOfDay(date: Date) {
@@ -62,6 +62,13 @@ function sanitizeJournalForCycleReport(journal: Record<string, JournalEntry>) {
 }
 
 const STATUS_GROUPS = STATUS_TAG_GROUPS;
+const PERIOD_PAIN_LEVELS: Record<string, number> = {
+  没有疼痛: 0,
+  轻微疼痛: 1,
+  中度疼痛: 3,
+  严重疼痛: 4,
+  难以忍受: 5,
+};
 
 const RESONANCE_CONTENT: Record<CyclePhase, {
   count: string;
@@ -110,27 +117,27 @@ export default function TodayPage() {
   const [toast, setToast] = useState("");
   const [previewDateKey, setPreviewDateKey] = useState(() => formatDateKey(startOfDay(new Date())));
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [calendarMode, setCalendarMode] = useState<"preview" | "period">("preview");
+  const [calendarYearView, setCalendarYearView] = useState(false);
   const [statusPanelOpen, setStatusPanelOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
   const [cycleReport, setCycleReport] = useState<CycleReport | null>(null);
   const [cycleReportLoading, setCycleReportLoading] = useState(false);
   const [cycleReportError, setCycleReportError] = useState("");
   const [activeStatusGroup, setActiveStatusGroup] = useState<StatusTagCategory>("mood");
-  const [calendarDraftKey, setCalendarDraftKey] = useState(() => formatDateKey(startOfDay(new Date())));
+  const [calendarDraftKey, setCalendarDraftKey] = useState<string | null>(null);
+  const [calendarRemovedKey, setCalendarRemovedKey] = useState<string | null>(null);
   const [calendarMonthKey, setCalendarMonthKey] = useState(() => formatDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
-  const statusScrollerRef = useRef<HTMLDivElement | null>(null);
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const todayKeyValue = formatDateKey(today);
   const previewDate = dateFromKey(previewDateKey);
-  const calendarDraftDate = dateFromKey(calendarDraftKey);
+  const calendarDraftDate = calendarDraftKey ? dateFromKey(calendarDraftKey) : null;
   const calendarMonthDate = dateFromKey(calendarMonthKey);
   const isPreviewingToday = previewDateKey === formatDateKey(today);
   const isPreviewFuture = previewDate.getTime() > today.getTime();
-  const isCalendarDraftFuture = calendarDraftDate.getTime() > today.getTime();
-  const last = store.lastPeriodStart ? new Date(store.lastPeriodStart) : null;
-  const cycle = computeCycleState(last, store.cycleLength, 5, previewDate);
+  const isCalendarDraftFuture = Boolean(calendarDraftDate && calendarDraftDate.getTime() > today.getTime());
+  const last = parsePeriodStart(store.lastPeriodStart);
+  const cycle = computeCycleState(last, store.cycleLength, DEFAULT_PERIOD_LENGTH, previewDate);
   const prediction = getPeriodPrediction(
     last,
     store.cycleLength,
@@ -155,7 +162,6 @@ export default function TodayPage() {
     });
     return keys;
   }, [store.lastPeriodStart, store.journal]);
-  const isPreviewPeriodStart = periodStartKeys.has(previewDateKey);
   const journalEntries = useMemo(() => {
     return (Object.entries(store.journal) as [string, JournalEntry][])
       .filter(([key]) => dateFromKey(key).getTime() <= today.getTime())
@@ -182,38 +188,25 @@ export default function TodayPage() {
   }, null);
   const hasInsightReport = localCycleReport.hasEnoughData || reportableEntries.length >= 3 || Boolean(strongestPainEntry) || Boolean(store.onboardingAnswers) || (activePhase === "menstrual" && cycle.cycleDay >= 5);
 
-  const getPeriodCalendarState = (date: Date): "actual" | "predicted" | "buffer" | null => {
+  const getPeriodCalendarState = (date: Date): "actual" | "predicted" | "buffer" | "draft-start" | "draft-range" | null => {
     const cursor = startOfDay(date);
-    const cursorKey = formatDateKey(cursor);
-    const periodLength = cycle.periodLength;
+    const periodLength = DEFAULT_PERIOD_LENGTH;
+
+    if (calendarDraftDate) {
+      const daysFromDraft = Math.round((cursor.getTime() - startOfDay(calendarDraftDate).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysFromDraft === 0) return "draft-start";
+      if (daysFromDraft > 0 && daysFromDraft < DEFAULT_PERIOD_LENGTH) return "draft-range";
+    }
     const starts = Array.from(periodStartKeys)
+      .filter((key) => key !== calendarRemovedKey)
       .map(dateFromKey)
       .sort((a, b) => a.getTime() - b.getTime());
 
     for (const start of starts) {
       const end = addDays(start, periodLength - 1);
-      const buffer = addDays(start, periodLength);
 
       if (cursor.getTime() >= start.getTime() && cursor.getTime() <= end.getTime()) {
-        return cursor.getTime() <= today.getTime() ? "actual" : "predicted";
-      }
-
-      if (cursorKey === formatDateKey(buffer) && cursor.getTime() > today.getTime()) {
-        return "buffer";
-      }
-    }
-
-    if (todayPrediction) {
-      const predictedStart = dateFromKey(todayPrediction.nextPeriodStartKey);
-      const predictedEnd = addDays(predictedStart, periodLength - 1);
-      const predictedBuffer = addDays(predictedStart, periodLength);
-
-      if (cursor.getTime() >= predictedStart.getTime() && cursor.getTime() <= predictedEnd.getTime()) {
-        return cursor.getTime() <= today.getTime() ? "actual" : "predicted";
-      }
-
-      if (cursorKey === formatDateKey(predictedBuffer) && cursor.getTime() > today.getTime()) {
-        return "buffer";
+        return cursor.getTime() <= today.getTime() ? "actual" : null;
       }
     }
 
@@ -263,7 +256,7 @@ export default function TodayPage() {
   const daysUntilPeriod = prediction?.daysUntilPeriod ?? null;
   const isCurrentlyMenstrual = activePhase === "menstrual";
   const distanceTitle = !prediction
-    ? "先设置上次月经"
+    ? "距离经期还有"
     : isCurrentlyMenstrual
       ? "当前处于经期"
       : daysUntilPeriod === 0
@@ -283,54 +276,19 @@ export default function TodayPage() {
     : daysUntilPeriod <= 0
       ? "天"
       : "天";
+  const visibleStatusGroups = isCurrentlyMenstrual
+    ? STATUS_GROUPS
+    : STATUS_GROUPS.filter((group) => group.key !== "period");
 
-  const togglePeriodStart = (dateKey: string) => {
+  const savePeriodStart = (dateKey: string) => {
     const targetDate = dateFromKey(dateKey);
     if (targetDate.getTime() > today.getTime()) {
       setToast("未来日期先做预览，不能记录");
       return;
     }
 
-    const isPeriodStart = periodStartKeys.has(dateKey);
-
-    if (isPeriodStart) {
-      const nextJournal = {
-        ...store.journal,
-        [dateKey]: {
-          ...store.journal[dateKey],
-          periodStarted: false,
-          mode: store.appMode,
-        }
-      };
-
-      const remainingStarts = (Object.entries(nextJournal) as [string, JournalEntry][])
-        .filter(([, entry]) => entry.periodStarted)
-        .map(([key]) => key)
-        .filter((key) => dateFromKey(key).getTime() <= today.getTime())
-        .sort();
-
-      const currentLastKey = store.lastPeriodStart ? formatDateKey(startOfDay(new Date(store.lastPeriodStart))) : null;
-      const shouldClearCurrentBase = currentLastKey === dateKey;
-      const fallbackStartKey = remainingStarts[remainingStarts.length - 1] || null;
-
-      update({
-        lastPeriodStart: shouldClearCurrentBase
-          ? fallbackStartKey
-            ? dateFromKey(fallbackStartKey).toISOString()
-            : null
-          : store.lastPeriodStart,
-        periodReminder: {
-          ...store.periodReminder,
-          lastNotifiedPeriodKey: null,
-        },
-        journal: nextJournal,
-      });
-      setToast(`已取消 ${formatMonthDay(targetDate)} 的月经记录`);
-      return;
-    }
-
     update({
-      lastPeriodStart: targetDate.toISOString(),
+      lastPeriodStart: dateKey,
       periodReminder: {
         ...store.periodReminder,
         lastNotifiedPeriodKey: null,
@@ -348,10 +306,11 @@ export default function TodayPage() {
   };
 
   const openPeriodCalendar = () => {
-    setCalendarMode("period");
-    setCalendarDraftKey(previewDateKey);
+    setCalendarDraftKey(null);
+    setCalendarRemovedKey(null);
     const date = dateFromKey(previewDateKey);
     setCalendarMonthKey(formatDateKey(new Date(date.getFullYear(), date.getMonth(), 1)));
+    setCalendarYearView(false);
     setCalendarOpen(true);
   };
 
@@ -367,11 +326,18 @@ export default function TodayPage() {
     let nextTags = selected
       ? currentTags.filter((item) => item !== tag)
       : [...currentTags, tag];
+    const secondarySection = STATUS_GROUPS
+      .find((group) => group.key === groupKey)
+      ?.secondarySections?.find((section) => section.tags.includes(tag));
+
+    if (secondarySection?.selection === "single" && !selected) {
+      nextTags = [...currentTags.filter((item) => !secondarySection.tags.includes(item)), tag];
+    }
 
     if (groupKey === "sexual") {
-      if (tag === "无" && !selected) nextTags = ["无"];
-      if (tag === "有" && !selected) nextTags = currentTags.filter((item) => item !== "无");
-      if (tag === "不想记录细节" && !selected) nextTags = ["不想记录细节"];
+      if (tag === "没有性行为" && !selected) nextTags = ["没有性行为"];
+      if (tag === "发生了性行为" && !selected) nextTags = currentTags.filter((item) => item !== "没有性行为");
+      if (tag === "不记录细节" && !selected) nextTags = ["不记录细节"];
     }
 
     if (groupKey === "symptom") {
@@ -382,17 +348,17 @@ export default function TodayPage() {
       }
     }
     if (groupKey === "diet") {
-      if (tag === "正常" && !selected) {
-        nextTags = ["正常"];
-      } else if (tag !== "正常" && !selected) {
-        nextTags = nextTags.filter((item) => item !== "正常");
+      if (tag === "正常吃饭" && !selected) {
+        nextTags = ["正常吃饭"];
+      } else if (tag !== "正常吃饭" && !selected) {
+        nextTags = nextTags.filter((item) => item !== "正常吃饭");
       }
     }
     if (groupKey === "exercise") {
-      if (tag === "没运动" && !selected) {
-        nextTags = ["没运动"];
-      } else if (tag !== "没运动" && !selected) {
-        nextTags = nextTags.filter((item) => item !== "没运动");
+      if (tag === "没有锻炼" && !selected) {
+        nextTags = ["没有锻炼"];
+      } else if (tag !== "没有锻炼" && !selected) {
+        nextTags = nextTags.filter((item) => item !== "没有锻炼");
       }
     }
 
@@ -402,8 +368,23 @@ export default function TodayPage() {
     };
 
     const hasSexualActivity = groupKey === "sexual"
-      ? nextTags.length > 0 && !nextTags.includes("无") && !nextTags.includes("不想记录细节")
+      ? nextTags.length > 0 && !nextTags.includes("没有性行为") && !nextTags.includes("不记录细节")
       : Boolean(currentEntry.sexualActivity);
+    let nextPain = currentEntry.pain;
+    if (groupKey === "period") {
+      const levelTag = nextTags.find((item) => PERIOD_PAIN_LEVEL_TAGS.includes(item));
+      const locations = nextTags.filter((item) => PERIOD_PAIN_LOCATION_TAGS.includes(item));
+      if (levelTag) {
+        nextPain = { level: PERIOD_PAIN_LEVELS[levelTag], locations };
+      } else if (PERIOD_PAIN_LEVEL_TAGS.includes(tag)) {
+        nextPain = undefined;
+      } else if (nextPain) {
+        nextPain = { ...nextPain, locations };
+      }
+    }
+    const exerciseMinutes = groupKey === "exercise" && nextTags.includes("没有锻炼")
+      ? undefined
+      : currentEntry.exerciseMinutes;
 
     update({
       journal: {
@@ -411,6 +392,8 @@ export default function TodayPage() {
         [previewDateKey]: {
           ...currentEntry,
           statusTags: nextStatusTags,
+          pain: nextPain,
+          exerciseMinutes,
           sexualActivity: hasSexualActivity
             ? currentEntry.sexualActivity ?? { recordedAt: new Date().toISOString() }
             : undefined,
@@ -421,33 +404,42 @@ export default function TodayPage() {
     setToast(selected ? `已取消 ${tag}` : `已记录 ${tag}`);
   };
 
+  const updateExerciseMinutes = (value: string) => {
+    if (isPreviewFuture) {
+      setToast("未来日期先做预览，不能记录");
+      return;
+    }
+    const currentEntry = store.journal[previewDateKey] ?? {};
+    const activities = currentEntry.statusTags?.exercise ?? [];
+    if (!activities.some((tag) => tag !== "没有锻炼")) {
+      setToast("请先选择已经完成的运动");
+      return;
+    }
+    const minutes = value === "" ? undefined : Math.max(1, Math.min(600, Number(value)));
+    update({
+      journal: {
+        ...store.journal,
+        [previewDateKey]: {
+          ...currentEntry,
+          exerciseMinutes: minutes !== undefined && Number.isFinite(minutes) ? minutes : undefined,
+          mode: store.appMode,
+        },
+      },
+    });
+  };
+
   const selectStatusGroup = (groupKey: StatusTagCategory) => {
     setActiveStatusGroup(groupKey);
-    const index = STATUS_GROUPS.findIndex((group) => group.key === groupKey);
-    const scroller = statusScrollerRef.current;
-    if (scroller && index >= 0) {
-      scroller.scrollTo({ left: scroller.clientWidth * index, behavior: "smooth" });
-    }
   };
 
   const closeStatusPanel = () => {
     setStatusPanelOpen(false);
   };
 
-  const handleStatusScroll = () => {
-    const scroller = statusScrollerRef.current;
-    if (!scroller) return;
-
-    const index = Math.round(scroller.scrollLeft / scroller.clientWidth);
-    const nextGroup = STATUS_GROUPS[index];
-    if (nextGroup && nextGroup.key !== activeStatusGroup) {
-      setActiveStatusGroup(nextGroup.key);
-    }
-  };
-
   const getStatusIcon = (groupKey: StatusTagCategory) => {
     if (groupKey === "mood") return <Moon className="h-5 w-5" />;
     if (groupKey === "symptom") return <Activity className="h-5 w-5" />;
+    if (groupKey === "period") return <Droplets className="h-5 w-5" />;
     if (groupKey === "diet") return <Apple className="h-5 w-5" />;
     if (groupKey === "exercise") return <Dumbbell className="h-5 w-5" />;
     return <Heart className="h-5 w-5" />;
@@ -481,44 +473,65 @@ export default function TodayPage() {
   const openStatusPanel = () => {
     setActiveStatusGroup("mood");
     setStatusPanelOpen(true);
-    window.setTimeout(() => {
-      statusScrollerRef.current?.scrollTo({ left: 0 });
-    }, 0);
   };
 
   const openCalendarPanel = () => {
-    setCalendarMode("preview");
-    setCalendarDraftKey(previewDateKey);
+    setCalendarDraftKey(null);
+    setCalendarRemovedKey(null);
     const date = dateFromKey(previewDateKey);
     setCalendarMonthKey(formatDateKey(new Date(date.getFullYear(), date.getMonth(), 1)));
+    setCalendarYearView(true);
     setCalendarOpen(true);
   };
 
   const confirmCalendarDate = () => {
-    if (calendarMode === "period") {
-      togglePeriodStart(calendarDraftKey);
+    if (calendarRemovedKey) {
+      const currentEntry = store.journal[calendarRemovedKey] ?? {};
+      const { periodStarted: _periodStarted, ...entryWithoutPeriodStart } = currentEntry;
+      const nextJournal: Record<string, JournalEntry> = { ...store.journal, [calendarRemovedKey]: entryWithoutPeriodStart };
+      const remainingPeriodStarts = Object.entries(nextJournal)
+        .filter(([, entry]) => entry.periodStarted)
+        .map(([key]) => key)
+        .sort();
+      const nextLastPeriodStart = store.lastPeriodStart?.slice(0, 10) === calendarRemovedKey
+        ? remainingPeriodStarts[remainingPeriodStarts.length - 1] ?? null
+        : store.lastPeriodStart;
+
+      update({
+        lastPeriodStart: nextLastPeriodStart,
+        journal: nextJournal,
+      });
+      setToast(`已取消 ${formatMonthDay(dateFromKey(calendarRemovedKey))} 的月经开始日记录`);
       setCalendarOpen(false);
       return;
     }
-
+    if (!calendarDraftKey) return;
+    savePeriodStart(calendarDraftKey);
     setPreviewDateKey(calendarDraftKey);
     setCalendarOpen(false);
-    setToast(`正在预览 ${formatMonthDay(calendarDraftDate)}`);
   };
 
   const shiftCalendarMonth = (months: number) => {
-    const nextMonth = addMonths(calendarMonthDate, months);
+    const nextMonth = addMonths(calendarMonthDate, calendarYearView ? months * 12 : months);
     setCalendarMonthKey(formatDateKey(nextMonth));
   };
 
   const selectCalendarDate = (dateKey: string) => {
-    setCalendarDraftKey(dateKey);
-    if (calendarMode === "preview") {
-      const date = dateFromKey(dateKey);
-      setPreviewDateKey(dateKey);
-      setCalendarOpen(false);
-      setToast(`正在预览 ${formatMonthDay(date)}`);
+    if (dateFromKey(dateKey).getTime() > today.getTime()) {
+      setToast("未来日期不能记录");
+      return;
     }
+    if (calendarRemovedKey === dateKey) {
+      setCalendarRemovedKey(null);
+      return;
+    }
+    if (periodStartKeys.has(dateKey)) {
+      setCalendarDraftKey(null);
+      setCalendarRemovedKey(dateKey);
+      return;
+    }
+    setCalendarRemovedKey(null);
+    setCalendarDraftKey((current) => current === dateKey ? null : dateKey);
   };
 
   const openInsightReport = async () => {
@@ -574,7 +587,7 @@ export default function TodayPage() {
           <div className="text-center">
             <div className="text-[20px] font-medium tracking-normal">{formatMonthDay(previewDate)}</div>
             <div className="mt-1 text-[11px] text-[#8C7B77]">
-              {isPreviewingToday ? "今天" : "预览"} · 第 {cycle.cycleDay} 天
+              {!last ? "今天 · 周期未设置" : `${isPreviewingToday ? "今天" : "预览"} · 第 ${cycle.cycleDay} 天`}
             </div>
           </div>
 
@@ -623,12 +636,21 @@ export default function TodayPage() {
           </div>
 
           <div className="mt-8 flex items-center gap-2 text-[16px] text-[#6E625F]">
-            <span>{PHASE_LABELS[activePhase].medical}</span>
+            <span>{last ? PHASE_LABELS[activePhase].medical : "设置后显示周期阶段"}</span>
             <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[#8C7B77]/45 text-[10px] text-[#8C7B77]">i</span>
           </div>
           <div className="mt-2 text-[12px] tracking-[0.12em] text-[#8C7B77]">
-            {PHASE_LABELS[activePhase].subtitle}
+            {last ? PHASE_LABELS[activePhase].subtitle : "记录一次月经开始日即可开始预测"}
           </div>
+
+          {!prediction && (
+            <Link
+              href="/about"
+              className="mt-6 rounded-full border border-white/70 bg-white/52 px-5 py-3 text-[13px] font-medium text-[#6E625F] shadow-sm backdrop-blur-md"
+            >
+              去我的页面设置周期
+            </Link>
+          )}
 
           {store.periodReminder.enabled && prediction?.isReminderWindow && (
             <div className="mt-7 w-full rounded-[24px] border border-white/60 bg-white/42 p-4 text-left shadow-sm backdrop-blur-md">
@@ -657,7 +679,7 @@ export default function TodayPage() {
 
         <section className="relative z-20 mt-3 grid grid-cols-2 gap-5 pb-3">
           <ActionButton
-            label={isPreviewPeriodStart ? "取消月经期" : "记录月经期"}
+            label="记录月经期"
             tone="period"
             icon={<Droplets className="h-6 w-6" />}
             onClick={openPeriodCalendar}
@@ -727,9 +749,15 @@ export default function TodayPage() {
             <div className="flex flex-none items-center justify-between">
               <div>
                 <div className="text-[12px] uppercase tracking-[0.16em] text-[#8C7B77]">
-                  {calendarMode === "period" ? "记录月经期" : "选择日期"}
+                  记录月经期
                 </div>
-                <div className="mt-1 text-lg font-medium text-[#221A18]">{formatMonthDay(calendarDraftDate)}</div>
+                <div className="mt-1 text-lg font-medium text-[#221A18]">
+                  {calendarDraftDate
+                    ? formatMonthDay(calendarDraftDate)
+                    : calendarRemovedKey
+                      ? "已取消选择，保存后生效"
+                      : "选择开始日期"}
+                </div>
               </div>
               <button
                 type="button"
@@ -746,103 +774,148 @@ export default function TodayPage() {
                   type="button"
                   onClick={() => shiftCalendarMonth(-1)}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F1E6DF] text-[#6E625F]"
-                  aria-label="上个月"
+                  aria-label={calendarYearView ? "上一年" : "上个月"}
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <div className="text-[16px] font-medium text-[#221A18]">{formatMonthTitle(calendarMonthDate)}</div>
+                <button
+                  type="button"
+                  onClick={() => setCalendarYearView((current) => !current)}
+                  className="rounded-full px-3 py-2 text-[16px] font-medium text-[#221A18] transition hover:bg-[#F8EFE8]"
+                >
+                  {calendarYearView ? `${calendarMonthDate.getFullYear()}年` : formatMonthTitle(calendarMonthDate)}
+                  <span className="ml-2 text-[11px] font-normal text-[#8C7B77]">
+                    {calendarYearView ? "查看月历" : "查看全年"}
+                  </span>
+                </button>
                 <button
                   type="button"
                   onClick={() => shiftCalendarMonth(1)}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F1E6DF] text-[#6E625F]"
-                  aria-label="下个月"
+                  aria-label={calendarYearView ? "下一年" : "下个月"}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] text-[#8C7B77]">
-                {["日", "一", "二", "三", "四", "五", "六"].map(day => (
-                  <div key={day} className="py-1">{day}</div>
-                ))}
-              </div>
-
-              <div className="mt-1 grid grid-cols-7 gap-1">
-                {monthCells.map((date, index) => {
-                  if (!date) return <div key={`empty-${index}`} className="h-[52px]" />;
-
-                  const dateKey = formatDateKey(date);
-                  const isDraft = dateKey === calendarDraftKey;
-                  const isToday = dateKey === todayKeyValue;
-                  const periodState = getPeriodCalendarState(date);
-                  const isMarkedPeriod = periodState === "actual" || periodState === "predicted";
-
-                  return (
-                    <button
-                      key={dateKey}
-                      type="button"
-                      onClick={() => selectCalendarDate(dateKey)}
-                      className={`flex h-[52px] flex-col items-center justify-center gap-0.5 rounded-2xl transition active:scale-95 ${
-                        isDraft ? "ring-2 ring-[#221A18]/70 ring-offset-2 ring-offset-white/70" : "hover:bg-[#F8EFE8]"
-                      }`}
-                    >
-                      <span className={`text-[14px] leading-none ${
-                        periodState === "actual" || periodState === "predicted"
-                          ? "font-medium text-[#E94B73]"
-                          : periodState === "buffer"
-                            ? "text-[#AAA09D]"
-                            : isToday
-                              ? "font-semibold text-[#221A18]"
-                              : "text-[#221A18]"
-                      }`}>
-                        {date.getDate()}
-                      </span>
-                      <span className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
-                        periodState === "actual"
-                          ? "border border-[#FF4F79] bg-[#FF4F79] text-white shadow-sm"
-                          : periodState === "predicted"
-                            ? "border-2 border-dotted border-[#FF4F79] bg-white/65 text-[#FF4F79]"
-                            : periodState === "buffer"
-                              ? "border-2 border-dotted border-[#B8B0AE] bg-white/45 text-[#B8B0AE]"
-                              : isToday
-                                ? "border border-[#D8D0CC] bg-[#D8D0CC]/70"
-                                : "border-2 border-[#B8B0AE] bg-white/35"
-                      }`}>
-                        {isMarkedPeriod && <Check className="h-3.5 w-3.5 stroke-[3]" />}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 grid gap-2 text-[11px] text-[#8C7B77]">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#FF4F79] text-white">
-                    <Check className="h-2.5 w-2.5 stroke-[3]" />
-                  </span>
-                  <span>已记录 / 已发生的月经日</span>
+              {calendarYearView ? (
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {Array.from({ length: 12 }, (_, month) => {
+                    const monthDate = new Date(calendarMonthDate.getFullYear(), month, 1);
+                    const cells = Array.from({ length: new Date(calendarMonthDate.getFullYear(), month + 1, 0).getDate() }, (_, index) =>
+                      new Date(calendarMonthDate.getFullYear(), month, index + 1)
+                    );
+                    return (
+                      <button
+                        key={month}
+                        type="button"
+                        onClick={() => {
+                          setCalendarMonthKey(formatDateKey(monthDate));
+                          setCalendarYearView(false);
+                        }}
+                        className="rounded-2xl bg-[#FFF9F4] p-2 text-left transition active:scale-[0.98]"
+                      >
+                        <div className="mb-1.5 text-[12px] font-medium text-[#6E625F]">{month + 1} 月</div>
+                        <div className="grid grid-cols-7 gap-[2px]">
+                          {cells.map((date) => {
+                            const state = getPeriodCalendarState(date);
+                            return (
+                              <span
+                                key={formatDateKey(date)}
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  state === "actual" || state === "draft-start"
+                                    ? "bg-[#FF4F79]"
+                                    : state === "predicted" || state === "draft-range"
+                                      ? "border border-[#FF4F79]"
+                                      : "bg-[#EDE4DE]"
+                                }`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-dotted border-[#FF4F79] text-[#FF4F79]">
-                    <Check className="h-2.5 w-2.5 stroke-[3]" />
-                  </span>
-                  <span>根据周期预测的本次经期持续日</span>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] text-[#8C7B77]">
+                    {["日", "一", "二", "三", "四", "五", "六"].map(day => (
+                      <div key={day} className="py-1">{day}</div>
+                    ))}
+                  </div>
+
+                  <div className="mt-1 grid grid-cols-7 gap-1">
+                    {monthCells.map((date, index) => {
+                      if (!date) return <div key={`empty-${index}`} className="h-[52px]" />;
+
+                      const dateKey = formatDateKey(date);
+                      const isToday = dateKey === todayKeyValue;
+                      const periodState = getPeriodCalendarState(date);
+                      const isMarkedPeriod = periodState === "actual" || periodState === "predicted" || periodState === "draft-start" || periodState === "draft-range";
+
+                      return (
+                        <button
+                          key={dateKey}
+                          type="button"
+                          onClick={() => selectCalendarDate(dateKey)}
+                          className="flex h-[52px] flex-col items-center justify-center gap-0.5 rounded-2xl transition active:scale-95 hover:bg-[#F8EFE8]"
+                        >
+                          <span className={`text-[14px] leading-none ${
+                            isMarkedPeriod
+                              ? "font-medium text-[#E94B73]"
+                              : periodState === "buffer"
+                                ? "text-[#AAA09D]"
+                                : isToday
+                                  ? "font-semibold text-[#221A18]"
+                                  : "text-[#221A18]"
+                          }`}>
+                            {date.getDate()}
+                          </span>
+                          <span className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
+                            periodState === "actual" || periodState === "draft-start"
+                              ? "border border-[#FF4F79] bg-[#FF4F79] text-white shadow-sm"
+                              : periodState === "predicted" || periodState === "draft-range"
+                                ? "border-2 border-dotted border-[#FF4F79] bg-white/65 text-[#FF4F79]"
+                                : periodState === "buffer"
+                                  ? "border-2 border-dotted border-[#B8B0AE] bg-white/45 text-[#B8B0AE]"
+                                  : isToday
+                                    ? "border border-[#D8D0CC] bg-[#D8D0CC]/70"
+                                    : "border-2 border-[#B8B0AE] bg-white/35"
+                          }`}>
+                            {isMarkedPeriod && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 grid gap-2 text-[11px] text-[#8C7B77]">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#FF4F79] text-white">
+                        <Check className="h-2.5 w-2.5 stroke-[3]" />
+                      </span>
+                      <span>选择的月经开始日 / 已记录日期</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-dotted border-[#FF4F79] text-[#FF4F79]">
+                        <Check className="h-2.5 w-2.5 stroke-[3]" />
+                      </span>
+                      <span>含开始日在内，共 7 天的经期范围</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            {calendarMode === "period" && (
-              <button
-                type="button"
-                onClick={confirmCalendarDate}
-                disabled={isCalendarDraftFuture}
-                className="mt-4 flex-none rounded-full bg-[#221A18] px-5 py-4 text-[14px] font-medium text-white transition disabled:opacity-30 active:scale-[0.98]"
-              >
-                {periodStartKeys.has(calendarDraftKey)
-                  ? "取消这天的月经记录"
-                  : "记录为月经开始日"}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={confirmCalendarDate}
+              disabled={(!calendarDraftKey && !calendarRemovedKey) || isCalendarDraftFuture}
+              className="mt-4 flex-none rounded-full bg-[#221A18] px-5 py-4 text-[14px] font-medium text-white transition disabled:opacity-30 active:scale-[0.98]"
+            >
+              {calendarRemovedKey ? "保存取消" : "保存记录"}
+            </button>
           </div>
         </div>
       )}
@@ -895,6 +968,16 @@ export default function TodayPage() {
                       <div className="mt-1 text-[18px] font-semibold text-[#221A18]">{displayedCycleReport.hardestMoment.value}</div>
                     </div>
                   </div>
+                  {displayedCycleReport.periodComparison && (
+                    <div className="mt-3 rounded-2xl bg-[#FFF9F4] p-3">
+                      <div className="text-[11px] text-[#8C7B77]">月经开始日对比</div>
+                      <div className="mt-2 flex items-center justify-between text-[13px] text-[#4A3E3B]">
+                        <span>本次 {displayedCycleReport.periodComparison.current}</span>
+                        <span className="text-[#8C7B77]">{displayedCycleReport.periodComparison.interval}</span>
+                        <span>上次 {displayedCycleReport.periodComparison.previous}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-[24px] bg-white/70 p-4">
@@ -947,7 +1030,7 @@ export default function TodayPage() {
                 </div>
                 <div className="mt-4 text-[16px] font-medium text-[#221A18]">再记录几次，心潮就能帮你看规律</div>
                 <p className="mt-2 text-[13px] leading-relaxed text-[#8C7B77]">
-                  可以先从今天的疼痛、饮食、运动或情绪开始，记录不用很完整，顺手就好。
+                  可以先从今天的疼痛、饮食、体力活动或心情开始，记录不用很完整，顺手就好。
                 </p>
                 <button
                   type="button"
@@ -982,8 +1065,8 @@ export default function TodayPage() {
               </button>
             </div>
 
-            <div className="mt-5 grid grid-cols-5 gap-2">
-              {STATUS_GROUPS.map((group) => {
+            <div className="mt-5 grid grid-cols-3 gap-2">
+              {visibleStatusGroups.map((group) => {
                 const active = group.key === activeStatusGroup;
                 const count = getSelectedTags(group.key).length;
                 return (
@@ -991,7 +1074,7 @@ export default function TodayPage() {
                     key={group.key}
                     type="button"
                     onClick={() => selectStatusGroup(group.key)}
-                    className={`relative flex min-h-[66px] flex-col items-center justify-center gap-1 rounded-2xl px-1 transition active:scale-95 ${
+                    className={`relative flex min-h-[66px] flex-col items-center justify-center gap-1 rounded-2xl px-1 active:scale-95 ${
                       active
                         ? "bg-[#221A18] text-white shadow-sm"
                         : "bg-white/72 text-[#6E625F] hover:bg-[#F8EFE8]"
@@ -1015,13 +1098,9 @@ export default function TodayPage() {
               })}
             </div>
 
-            <div
-              ref={statusScrollerRef}
-              onScroll={handleStatusScroll}
-              className="mt-5 flex overflow-x-auto scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {STATUS_GROUPS.map((group) => (
-                <section key={group.key} className="min-w-full snap-center px-0.5">
+            <div className="mt-5 min-h-0 flex-1 overflow-y-auto [-webkit-overflow-scrolling:touch]">
+              {visibleStatusGroups.filter((group) => group.key === activeStatusGroup).map((group) => (
+                <section key={group.key} className="px-0.5">
                   <div className="rounded-[24px] bg-white/62 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -1035,25 +1114,32 @@ export default function TodayPage() {
                       </span>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      {group.tags.map((tag) => {
-                        const active = getSelectedTags(group.key).includes(tag);
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => updateStatusTags(group.key, tag)}
-                            className={`min-h-11 rounded-2xl px-3 py-2 text-[13px] transition active:scale-95 ${
-                              active
-                                ? "bg-[#221A18] text-white shadow-sm"
-                                : "bg-[#FFF9F4] text-[#4A3E3B] hover:bg-[#F8EFE8]"
-                            }`}
-                          >
-                            {tag}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {group.key === "period" && (
+                      <p className="mt-4 rounded-2xl bg-[#FDF0F1] px-3 py-2 text-[12px] leading-relaxed text-[#9C5F66]">
+                        该板块仅在月经期出现，可补充经量与疼痛情况。
+                      </p>
+                    )}
+                    {group.tags.length > 0 && (
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        {group.tags.map((tag) => {
+                          const active = getSelectedTags(group.key).includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => updateStatusTags(group.key, tag)}
+                              className={`min-h-11 rounded-2xl px-3 py-2 text-[13px] transition active:scale-95 ${
+                                active
+                                  ? "bg-[#221A18] text-white shadow-sm"
+                                  : "bg-[#FFF9F4] text-[#4A3E3B] hover:bg-[#F8EFE8]"
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                     {group.secondarySections?.map((section) => (
                       <div key={section.label} className="mt-4 border-t border-[#EADCD1]/60 pt-4">
                         <div className="mb-2 text-[12px] font-medium text-[#8C7B77]">
@@ -1080,6 +1166,28 @@ export default function TodayPage() {
                         </div>
                       </div>
                     ))}
+                    {group.key === "exercise" && (
+                      <div className="mt-4 border-t border-[#EADCD1]/60 pt-4">
+                        <label htmlFor="exercise-minutes" className="mb-2 block text-[12px] font-medium text-[#8C7B77]">
+                          运动时间
+                        </label>
+                        <div className="flex items-center gap-2 rounded-2xl bg-[#FFF9F4] px-4 py-3">
+                          <input
+                            id="exercise-minutes"
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={600}
+                            placeholder="填写"
+                            value={previewEntry.exerciseMinutes ?? ""}
+                            onChange={(event) => updateExerciseMinutes(event.target.value)}
+                            className="w-full bg-transparent text-[16px] text-[#221A18] outline-none placeholder:text-[#B8AAA4]"
+                          />
+                          <span className="shrink-0 text-[13px] text-[#8C7B77]">分钟</span>
+                        </div>
+                        <p className="mt-2 text-[11px] text-[#A3918B]">选择已完成的运动后填写时长。</p>
+                      </div>
+                    )}
                   </div>
                 </section>
               ))}
@@ -1087,7 +1195,7 @@ export default function TodayPage() {
 
             <div className="mt-4 flex items-center justify-between gap-3">
               <div className="flex flex-1 justify-center gap-1.5">
-                {STATUS_GROUPS.map((group) => (
+                {visibleStatusGroups.map((group) => (
                   <span
                     key={group.key}
                     className={`h-1.5 rounded-full transition-all ${
